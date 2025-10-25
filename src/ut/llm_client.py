@@ -2,7 +2,7 @@
 import os
 
 from dotenv import load_dotenv
-from openai import OpenAI
+import subprocess
 
 load_dotenv()
 
@@ -16,15 +16,7 @@ def generate_test_code(prompt: str) -> str:
     Returns:
         str: The generated test code.
     """
-
-    api_key = os.getenv("OPENAI_API_KEY")
-    client = OpenAI(api_key=api_key)
-
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-        max_tokens=600,
-    )
-
-    return response.choices[0].message.content
+    # TODO: Add error handling, including timeout, connection errors, bad API key, etc.
+    response = subprocess.run(f"llm $\'{prompt}\'", shell=True, capture_output=True, text=True)
+    assert response.returncode == 0, f"LLM query failed: {response.stderr}"
+    return response.stdout
