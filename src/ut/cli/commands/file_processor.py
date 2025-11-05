@@ -7,7 +7,7 @@ from rich.console import Console
 
 from ut.cli.commands.constants import DEF_TEST_STRING
 from ut.cli.commands.helper import verbose_log, verbose_print
-from ut.llm_client import generate_test_plan, generate_test_case
+from ut.llm_client import generate_test_plan, generate_test_case, parse_test_case_plan_old, parse_test_case_plan_json
 from ut.parser import calculate_import_path_simple, source_code_analysis
 from ut.prompts.prompt_builder import (
     generate_class_method_prompt,
@@ -279,50 +279,29 @@ def process_project(
 
     verbose_print("    Sending to LLM...", verbose)
 
-    if not dry_run:
-        raw_response = generate_test_plan(prompt)
-        # Log both the prompt and the response to a subfolder of ./logs/planner/
-        # The subfolder will be named based on the date and time the script was run
-        log_dir = Path("./logs/planner/" + log_folder)
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / f"planner_response_{file_path.stem}.txt"
-        with open(log_file, "w", encoding="utf-8") as f:
-            f.write(raw_response)
-    else:
-        console.print(f"    [dim]Would generate test plan for project in {file_path}[/dim]")
-        return
-    
-    # # TODO: For testing purposes only
-    # with open("/data1/jcarleton/unittest-ai-agent/logs/planner/original/planner_response_converter.txt", 'r') as file:
-    #     raw_response = file.read()
+    # if not dry_run:
+    #     raw_response = generate_test_plan(prompt)
+    #     # Log both the prompt and the response to a subfolder of ./logs/planner/
+    #     # The subfolder will be named based on the date and time the script was run
+    #     log_dir = Path("./logs/planner/" + log_folder)
+    #     log_dir.mkdir(parents=True, exist_ok=True)
+    #     log_file = log_dir / f"planner_response_{file_path.stem}.txt"
+    #     with open(log_file, "w", encoding="utf-8") as f:
+    #         f.write(raw_response)
+    # else:
+    #     console.print(f"    [dim]Would generate test plan for project in {file_path}[/dim]")
+    #     return
 
-    # Parse the response to get test plans for each function
-    # Assume the response contains sections like:
-    # **Test Case: `test_name`**
-    #     - *Functions required:* function_a, function_b, ...
-    #     - *Description:*
-    # We want to extract the test case name, functions required, and description for each test case, and turn it into a dictionary where the key is the test case name and the value contains the other elements
-    test_case_plans = {}
-    
-    # Parse the raw response to extract test case plans
-    import re
-    
-    # Split by test case headers (numbered list with "Test Case:" pattern)
-    test_case_pattern = r'\d+\.\s+\*\*Test Case:\s+`([^`]+)`\*\*'
-    description_pattern = r'-\s+\*Description:\*\s+(.+?)$'
-    
-    test_cases = re.finditer(test_case_pattern, raw_response)
-    
-    for match in test_cases:
-        test_name = match.group(1)
-        start_pos = match.end()
-        
-        # Find the description for this test case (single line only)
-        desc_match = re.search(description_pattern, raw_response[start_pos:], re.MULTILINE)
-        if desc_match:
-            description = desc_match.group(1).strip()
-            test_case_plans[test_name] = description
-            verbose_log(f"  → Extracted test plan: {test_name}", verbose)
+    # TODO: For testing purposes only
+    with open("/data1/jcarleton/unittest-ai-agent/logs/planner/json_test/planner_response_example.txt", 'r') as file:
+        raw_response = file.read()
+
+    if conf['planner']['plan_format'] == 'basic':
+        test_case_plans = parse_test_case_plan_old(raw_response, verbose)
+    elif conf['planner']['plan_format'] == 'json':
+        test_case_plans = parse_test_case_plan_json(raw_response, verbose)
+    else:
+        raise ValueError(f"Unsupported plan format: {conf['planner']['plan_format']}")
     
     if not test_case_plans:
         console.print("[yellow]Warning: No test case plans extracted from planner response[/yellow]")
