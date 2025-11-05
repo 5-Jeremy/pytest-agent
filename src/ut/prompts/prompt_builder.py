@@ -21,7 +21,7 @@ def generate_coder_prompt(
 ) -> str:
     coder_instructions_prompt = _load_prompt("coder_instructions_prompt.txt")
     prompt = coder_instructions_prompt
-    prompt += "\nFunction to be tested:\n"
+    prompt += "\nFunctions to be tested:\n"
     prompt += function_code + "\n"
     # prompt += "Recommended imports:\n"
     # prompt += imports_code + "\n"

@@ -317,9 +317,16 @@ def process_project(
     import_statements = set()
     for test_name, test_plan in test_case_plans.items():
         verbose_log(f"\n  → Generating test code for: [cyan]{test_name}[/cyan]", verbose)
+
+        # Get the code for the required functions
+        required_function_names = test_plan.get('functions_required', [])
+        required_function_codes = [
+            func_data['function_code'] for func_data in functions_data if func_data['function_name'] in required_function_names
+        ]
+        function_code_context = "\n".join(required_function_codes)
         
         prompt = generate_coder_prompt(
-            functions_data[0]['function_code'], # TODO: Replace with correct function code lookup
+            function_code_context,
             f"{test_name}: {test_plan}"
         )
         prompts[test_name] = prompt
