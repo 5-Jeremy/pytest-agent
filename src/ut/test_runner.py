@@ -9,7 +9,6 @@ import tarfile
 import io
 from typing import Optional, Dict, Any
 from pathlib import Path
-from results_parser import parse_pytest_output
 
 class DockerTestRunner:
     """

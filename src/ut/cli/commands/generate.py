@@ -6,10 +6,12 @@ import typer
 from rich.console import Console
 
 from ut.cli.commands.file_processor import process_file, process_project
-from ut.cli.commands.helper import clean_temp_files
+from ut.cli.commands.helper import clean_temp_files, verbose_log
 from ut.llm_client import is_vllm_running
+from ut.test_runner import DockerTestRunner
+from ut.results_parser import parse_pytest_output
 from omegaconf import OmegaConf
-import os
+import os, shutil
 
 console = Console()
 
@@ -146,10 +148,38 @@ def generate(
             f"\n✅ [bold green]Tests generated successfully in \
                 {output_base}/[/bold green]"
         )
-        console.print("\n[bold cyan]Next steps:[/bold cyan]")
-        console.print("1. Review generated tests in the output directory")
-        console.print("2. Copy relevant tests to your project's test directory")
-        console.print("3. Adjust import paths if necessary")
-        console.print(f"4. Run: [dim]pytest {output_dir}/[/dim] to test them")
     else:
         console.print("\n[yellow]Dry run completed. No files were created.[/yellow]")
+        return
+
+    ### Run the generated tests inside a Docker container
+    console.print(f"\n[bold blue]Cleaning files from agent_workspace[/bold blue]")
+    try:
+        shutil.rmtree("agent_workspace")
+        os.makedirs("agent_workspace")
+    except Exception as e:
+        console.print(f"[bold red]Error cleaning agent_workspace: {e}[/bold red]")
+        return
+    image_name = conf.get('project', {}).get('docker_image_name', None)
+    if image_name is not None:
+        assert 'test_dir_in_container' in conf['project']
+        test_dir = conf['project']['test_dir_in_container']
+        console.print(f"\n[bold blue]Running generated tests in Docker container '{image_name}'[/bold blue]")
+        # The working directory is where pytest will be run from
+        # Be default we assume that the directory for tests is inside the working directory, so if no working dir is specified we derive it from test_dir
+        test_runner = DockerTestRunner(image_name=image_name, container_name="ut_generate", test_dir_in_container=test_dir, working_dir=conf['project'].get('working_dir', Path(test_dir).parent.as_posix()))
+        test_runner.start_container()
+        test_results_string = test_runner.run_pytest(os.path.join(output_base, f"test_{path.stem}.py"))
+        test_results_dict = parse_pytest_output(test_results_string)
+        print(test_results_dict)
+    else:
+        console.print(f"\n[bold yellow]Skipping test execution: No Docker image specified in configuration.[/bold yellow]")
+        console.print(f"[dim]Stopping here.[/dim]")
+        return
+    
+    if len(test_results_dict) == 0:
+        console.print(f"\n[bold red]No test results were parsed. Something went wrong.[/bold red]")
+        console.print(f"[dim]Stopping here.[/dim]")
+        return
+    
+
