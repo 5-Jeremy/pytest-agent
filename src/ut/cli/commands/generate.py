@@ -5,8 +5,11 @@ from typing import Optional
 import typer
 from rich.console import Console
 
-from ut.cli.commands.file_processor import process_file
+from ut.cli.commands.file_processor import process_file, process_project
 from ut.cli.commands.helper import clean_temp_files
+from ut.llm_client import is_vllm_running
+from omegaconf import OmegaConf
+import os
 
 console = Console()
 
@@ -36,6 +39,17 @@ def generate(
         "--mirror/--flat",
         help="Mirror source directory structure in output (default: mirror)",
     ),
+    no_collab: bool = typer.Option(
+        False,
+        "--no-collab",
+        help="Use the API model to directly generate tests rather than planning for a local LLM.",
+    ),
+    config_name: Optional[str] = typer.Option(
+        "old_prompt",
+        "--config",
+        "-c",
+        help="Configuration name for prompt templates and settings",
+    ),
 ) -> None:
     """
     Generate unit tests for Python files in any Python project.
@@ -57,6 +71,18 @@ def generate(
 
     # Clean up temporary files
     clean_temp_files(verbose=False)
+
+    # Get config
+    if ".yaml" not in config_name:
+        config_name += ".yaml"
+    conf = OmegaConf.load(os.path.join("configs", config_name))
+    if not no_collab:
+        if not is_vllm_running():
+            console.print(
+                "[bold red]Error: vLLM server is not running on port 8000. \
+                    Please start the server before generating tests.[/bold red]"
+            )
+            raise typer.Exit(code=1)
 
     if not file_path:
         console.print("[bold red]Error: The file path cannot be empty.[/bold red]")
@@ -88,13 +114,22 @@ def generate(
 
     if path.is_file():
         console.print(f"[bold blue]Processing single file: {path.name}[/bold blue]")
-        process_file(path, output_base, mirror_structure, verbose, dry_run)
+        if no_collab:
+            process_file(path, output_base, mirror_structure, verbose, dry_run)
+        else:
+            process_project(path, output_base, mirror_structure, verbose, dry_run, conf)
 
     elif path.is_dir():
-        console.print(
-            "[bold red]Warning: Directory processing is not implemented yet.[/bold red]"
-        )
-        raise typer.Exit(1)
+        if no_collab:
+            console.print(
+                "[bold red]Warning: Directory processing is not implemented for non-collaborative mode.[/bold red]"
+            )
+            raise typer.Exit(1)
+        else:
+            console.print(
+                f"[bold blue]Processing directory: {path} (recursive={recursive})[/bold blue]"
+            )
+            process_project(path, output_base, mirror_structure, verbose, dry_run, conf)
 
     else:
         msg_sufix = "is neither a file nor a directory"

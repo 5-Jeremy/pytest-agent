@@ -1,0 +1,5 @@
+planner:
+  prompt_file: planner_instructions_prompt.txt
+  plan_format: basic
+coder:
+  prompt_file: coder_instructions_prompt.txt

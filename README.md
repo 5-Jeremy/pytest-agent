@@ -10,7 +10,7 @@ Unittest AI Agent is a Python tool that automatically generates comprehensive un
 - **Test Postprocessing:** Cleans and adapts generated code for your project structure.
 - **Test Writing:** Saves generated tests to the appropriate directory.
 
-## Getting Started
+## Setup
 
 0. **Requirements:**
    - Python 3.9 or higher
@@ -22,18 +22,36 @@ Unittest AI Agent is a Python tool that automatically generates comprehensive un
    poetry install
    ```
 
-2. **Set your OpenAI API key:**
-   - Rename the `.env.example` to `.env`:
+2. **Setup llm to use TAMUS AI Chat:**
+   - Save your API key
+     ```sh
+     llm keys set chat.tamu.ai <key>
      ```
-     OPENAI_API_KEY=your_openai_api_key_here
-     ```
+   - ```source llm_setup_model.sh```
 
-3. **Run the test generator:**
-   ```sh
-   poetry run ut generate example/converter.py
-   ```
+3. **Build the Docker image for the code under evaluation**
+   - If copying the code to test directly into the container image: ```docker build -t unittest:example -f eval_dockerfiles/Dockerfile .```
+   - If using a volume mount:
 
-   This will analyze `ut/example/converter.py` and generate tests in `ut/example/tests/`.
+4.  **Start the VLLM server**
+```sh
+vllm serve Qwen/Qwen2.5-Coder-32B-Instruct
+```
+
+## Generating tests
+
+**Run the test generator:**
+Inside the unittest-ai-agent directory:
+```sh
+poetry run ut generate example/converter.py
+```
+
+This will analyze `ut/example/converter.py` and generate tests in `ut/example/tests/`.
+
+## Executing tests
+```sh
+python src/ut/test_runner.py
+```
 
 ### Customization
 

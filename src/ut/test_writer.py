@@ -101,7 +101,7 @@ def extract_imports_and_functions(test_code: str) -> tuple[set, list]:
             decorator_lines.append(line)
             in_function = False
         # Check if it's the start of a function
-        elif line.startswith(DEF_TEST_STRING):
+        elif line.startswith("def "):
             if current_function:
                 # Save the previous function
                 functions.append("\n".join(current_function))
@@ -146,7 +146,7 @@ def extract_imports_and_functions(test_code: str) -> tuple[set, list]:
     for func in functions:
         # Extract function name
         for line in func.split("\n"):
-            if line.startswith(DEF_TEST_STRING):
+            if line.startswith("def "):
                 func_name = line.split("(")[0].replace("def ", "")
                 if func_name not in seen_names:
                     seen_names.add(func_name)
