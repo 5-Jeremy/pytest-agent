@@ -1,5 +1,7 @@
 # Additions from 5-Jeremy
 old/
+agent_workspace/
+logs/
 
 ### Python template
 # Byte-compiled / optimized / DLL files
