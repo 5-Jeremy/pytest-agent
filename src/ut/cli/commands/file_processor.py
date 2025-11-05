@@ -8,7 +8,7 @@ from rich.console import Console
 from ut.cli.commands.constants import DEF_TEST_STRING
 from ut.cli.commands.helper import verbose_log, verbose_print
 from ut.llm_client import generate_test_plan, generate_test_case, parse_test_case_plan_old, parse_test_case_plan_json
-from ut.parser import calculate_import_path_simple, source_code_analysis
+from ut.parser import calculate_import_path_simple, source_code_analysis, extract_code
 from ut.prompts.prompt_builder import (
     generate_class_method_prompt,
     generate_standalone_prompt,
@@ -156,54 +156,6 @@ def process_file(
             )
             console.print(f"     Contains {len(all_test_functions)} test functions")
 
-def extract_code(file_path: Path, ignore_list: list[str], verbose: Optional[bool] = False):
-    # Determine which files contain python source code (assume there is no existing directory for pytest tests)
-    python_files = list(file_path.rglob("*.py")) if file_path.is_dir() else ([file_path] if file_path.suffix == ".py" else [])
-    if len(python_files) == 0:
-        console.print(f"[bold red]Error: No Python files found in {file_path}[/bold red]")
-        return
-    # Build an index for which functions and classes are defined in which files
-    function_locs = {}
-    class_locs = {}
-    # Determine which files to pass to the planner
-    files_for_planner = []
-    for file in python_files:
-        if file.name in ignore_list or any([dir in ignore_list for dir in file.parent.__str__().split('/')]):
-            verbose_log(f"  → Ignoring {file.name}", verbose)
-            continue
-        # source_code_analysis returns a string with all the import statements and a list of dictionaries (one for each function)
-        # Each dictionary contains the function_name, function_code, and parent_class_code (if it exists)
-        try:
-            imports_code, functions_data = source_code_analysis(str(file))
-            for data in functions_data:
-                function_locs[data["function_name"]] = file
-                if "class_name" in data:
-                    class_locs[data["class_name"]] = file
-            if len(functions_data) > 0:
-                files_for_planner.append(file)
-        except Exception as e:
-            console.print(f"[red]Failed to analyze {file.name}: {e} \n unit tests will not be generated for functions in this file [/red]")
-            continue
-
-    # Make sure there are no duplicate function/class names across files
-    all_function_names = list(function_locs.keys())
-    all_class_names = list(class_locs.keys())
-    if len(all_function_names) != len(set(all_function_names)):
-        console.print(f"[bold red]Error: Duplicate function names found across files. Please ensure all function names are unique for collaboration mode.[/bold red]")
-        return
-    if len(all_class_names) != len(set(all_class_names)):
-        console.print(f"[bold red]Error: Duplicate class names found across files. Please ensure all class names are unique for collaboration mode.[/bold red]")
-        return
-
-    if len(all_function_names) == 0 and len(all_class_names) == 0:
-        if verbose:
-            console.print(
-                f"[bold red]Error: No functions or classes found in {file_path.name}, so no tests can be generated.[/bold red]"
-            )
-        return
-    
-    console.print(f"[bold blue]Using code from {len(files_for_planner)} files with {len(all_function_names)} functions and {len(all_class_names)} classes[/bold blue]")
-    return function_locs, class_locs, files_for_planner, functions_data
 
 # This function assumes collaboration
 def process_project(
@@ -233,8 +185,7 @@ def process_project(
     if log_folder is None:
         log_folder = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # TODO: Instead of returning functions_data directly, it should be processed further first
-    function_locs, class_locs, files_for_planner, functions_data = extract_code(file_path, ignore_list, verbose)
+    function_locs, class_locs, files_for_planner, function_dict = extract_code(file_path, ignore_list, verbose)
 
     console.print(f"[bold blue]Planning test generation[/bold blue]")
 
@@ -320,9 +271,12 @@ def process_project(
 
         # Get the code for the required functions
         required_function_names = test_plan.get('functions_required', [])
-        required_function_codes = [
-            func_data['function_code'] for func_data in functions_data if func_data['function_name'] in required_function_names
-        ]
+        required_function_codes = [function_dict[func_name] for func_name in required_function_names if func_name in function_dict]
+        # Warn if the name of a required function is not found in function_dict
+        for func_name in required_function_names:
+            if func_name not in function_dict:
+                console.print(f"[yellow]Warning: Required function '{func_name}' not found in source code[/yellow]")
+                verbose_log(f"    (functions available: {list(function_dict.keys())})", verbose)
         function_code_context = "\n".join(required_function_codes)
         
         prompt = generate_coder_prompt(

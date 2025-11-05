@@ -1,7 +1,11 @@
 """Automated Unit Test Generation CLI with AI."""
 import ast
 from pathlib import Path
+from typing import Optional
+from ut.cli.commands.helper import verbose_log
+from rich.console import Console
 
+console = Console()
 
 def source_code_analysis(file_path: str) -> tuple[str, list[dict]]:
     """Analyze a Python source file and extract import statements \
@@ -95,3 +99,56 @@ def calculate_import_path_simple(file_path: Path) -> str:
         return file_path.stem
 
     return ".".join(parts)
+
+def extract_code(file_path: Path, ignore_list: list[str], verbose: Optional[bool] = False):
+    # Determine which files contain python source code (assume there is no existing directory for pytest tests)
+    python_files = list(file_path.rglob("*.py")) if file_path.is_dir() else ([file_path] if file_path.suffix == ".py" else [])
+    if len(python_files) == 0:
+        console.print(f"[bold red]Error: No Python files found in {file_path}[/bold red]")
+        return
+    # Build an index for which functions and classes are defined in which files
+    function_locs = {}
+    class_locs = {}
+    # Build a dictionary matching function names to their definitions
+    function_dict = {}
+    # Determine which files to pass to the planner
+    files_for_planner = []
+    for file in python_files:
+        if file.name in ignore_list or any([dir in ignore_list for dir in file.parent.__str__().split('/')]):
+            verbose_log(f"  → Ignoring {file.name}", verbose)
+            continue
+        # source_code_analysis returns a string with all the import statements and a list of dictionaries (one for each function)
+        # Each dictionary contains the function_name, function_code, and parent_class_code (if it exists)
+        try:
+            imports_code, functions_data = source_code_analysis(str(file))
+            for data in functions_data:
+                function_locs[data["function_name"]] = file
+                if "class_name" in data:
+                    class_locs[data["class_name"]] = file
+                # TODO: May need to extract the parent class info as well
+                function_dict[data["function_name"]] = data["function_code"]
+            if len(functions_data) > 0:
+                files_for_planner.append(file)
+        except Exception as e:
+            console.print(f"[red]Failed to analyze {file.name}: {e} \n unit tests will not be generated for functions in this file [/red]")
+            continue
+
+    # Make sure there are no duplicate function/class names across files
+    all_function_names = list(function_locs.keys())
+    all_class_names = list(class_locs.keys())
+    if len(all_function_names) != len(set(all_function_names)):
+        console.print(f"[bold red]Error: Duplicate function names found across files. Please ensure all function names are unique for collaboration mode.[/bold red]")
+        return
+    if len(all_class_names) != len(set(all_class_names)):
+        console.print(f"[bold red]Error: Duplicate class names found across files. Please ensure all class names are unique for collaboration mode.[/bold red]")
+        return
+
+    if len(all_function_names) == 0 and len(all_class_names) == 0:
+        if verbose:
+            console.print(
+                f"[bold red]Error: No functions or classes found in {file_path.name}, so no tests can be generated.[/bold red]"
+            )
+        return
+    
+    console.print(f"[bold blue]Using code from {len(files_for_planner)} files with {len(all_function_names)} functions and {len(all_class_names)} classes[/bold blue]")
+    return function_locs, class_locs, files_for_planner, function_dict
