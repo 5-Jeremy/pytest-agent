@@ -277,24 +277,24 @@ def process_project(
     # Make the prompt for the planner
     prompt = generate_planner_prompt(combined_source_code, template_path=conf['planner']['prompt_file'])
 
-    verbose_print("    Sending to LLM...", verbose)
-
-    # if not dry_run:
-    #     raw_response = generate_test_plan(prompt)
-    #     # Log both the prompt and the response to a subfolder of ./logs/planner/
-    #     # The subfolder will be named based on the date and time the script was run
-    #     log_dir = Path("./logs/planner/" + log_folder)
-    #     log_dir.mkdir(parents=True, exist_ok=True)
-    #     log_file = log_dir / f"planner_response_{file_path.stem}.txt"
-    #     with open(log_file, "w", encoding="utf-8") as f:
-    #         f.write(raw_response)
-    # else:
-    #     console.print(f"    [dim]Would generate test plan for project in {file_path}[/dim]")
-    #     return
-
-    # TODO: For testing purposes only
-    with open("/data1/jcarleton/unittest-ai-agent/logs/planner/json_test/planner_response_example.txt", 'r') as file:
-        raw_response = file.read()
+    if dry_run:
+        console.print(f"    [dim]Would generate test plan for project in {file_path}[/dim]")
+        return
+    elif 'predefined_plan_path' in conf and conf['predefined_plan_path'] is not None:
+        predefined_plan_path = conf['predefined_plan_path']
+        console.print(f"    [dim]Using predefined test plan from {predefined_plan_path}[/dim]")
+        with open(predefined_plan_path, "r") as f:
+            raw_response = f.read()
+    else:
+        verbose_print("    Sending to LLM...", verbose)
+        raw_response = generate_test_plan(prompt)
+        # Log both the prompt and the response to a subfolder of ./logs/planner/
+        # The subfolder will be named based on the date and time the script was run
+        log_dir = Path("./logs/planner/" + log_folder)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / f"planner_response_{file_path.stem}.txt"
+        with open(log_file, "w", encoding="utf-8") as f:
+            f.write(raw_response)
 
     if conf['planner']['plan_format'] == 'basic':
         test_case_plans = parse_test_case_plan_old(raw_response, verbose)

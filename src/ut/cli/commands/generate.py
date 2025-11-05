@@ -24,12 +24,6 @@ def generate(
         "-o",
         help="Output directory for generated tests (default: ut_output/)",
     ),
-    recursive: bool = typer.Option(
-        True,
-        "--recursive/--no-recursive",
-        "-r/-R",
-        help="Process files recursively in directories",
-    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed output"),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be generated without creating files"
@@ -50,6 +44,12 @@ def generate(
         "-c",
         help="Configuration name for prompt templates and settings",
     ),
+    plan_path: Optional[str] = typer.Option(
+        None,
+        "--plan-path",
+        help="Path to a predefined test plan file (overrides initial planning step)",
+        metavar="FILE_PATH"
+    )
 ) -> None:
     """
     Generate unit tests for Python files in any Python project.
@@ -76,6 +76,8 @@ def generate(
     if ".yaml" not in config_name:
         config_name += ".yaml"
     conf = OmegaConf.load(os.path.join("configs", config_name))
+    if plan_path is not None:
+        conf['predefined_plan_path'] = plan_path
     if not no_collab:
         if not is_vllm_running():
             console.print(
@@ -127,7 +129,7 @@ def generate(
             raise typer.Exit(1)
         else:
             console.print(
-                f"[bold blue]Processing directory: {path} (recursive={recursive})[/bold blue]"
+                f"[bold blue]Processing directory: {path}[/bold blue]"
             )
             process_project(path, output_base, mirror_structure, verbose, dry_run, conf)
 
