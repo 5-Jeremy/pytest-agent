@@ -232,6 +232,9 @@ def process_project(
     else:
         verbose_print("    Sending to LLM...")
         raw_response = generate_test_plan(prompt)
+        if raw_response is None:
+            console.print(f"[red]Error occured during plan generation[/red]")
+            return
         # Log both the prompt and the response to a subfolder of ./logs/planner/
         # The subfolder will be named based on the date and time the script was run
         log_dir = Path(os.environ['UT_LOG_DIR'] + "/planner")

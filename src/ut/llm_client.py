@@ -2,6 +2,7 @@
 
 from dotenv import load_dotenv
 import subprocess, requests
+import llm
 from openai import OpenAI
 
 from ut.cli.commands.helper import verbose_log
@@ -12,6 +13,25 @@ load_dotenv()
 
 # Function used to do inference with the planner model
 def generate_test_plan(prompt: str) -> str:
+    """Generate test plan for a python project.
+
+    Args:
+        prompt (str): The prompt constructed.
+
+    Returns:
+        str: The generated test code.
+    """
+    model = llm.get_model("TAMUS AI Chat (chat.tamu.ai): protected.gpt-4.1") # TODO: This assumes that TAMU AI is used
+    try:
+        response = model.prompt(prompt).text()
+    except Exception as e:
+        print(f"Error occurred: {e}")
+        return None
+
+    return response
+
+# Function used to do inference with the planner model (outdated)
+def generate_test_plan_cli(prompt: str) -> str:
     """Generate test plan for a python project.
 
     Args:
