@@ -2,6 +2,7 @@
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
+import os
 
 from rich.console import Console
 
@@ -28,7 +29,6 @@ def process_file(
     file_path: Path,
     output_base: Path,
     mirror_structure: bool,
-    verbose: bool,
     dry_run: bool,
     base_path: Optional[Path] = None,
 ):
@@ -38,12 +38,11 @@ def process_file(
         file_path (Path): The path to the Python file to process.
         output_base (Path): The base directory for output files.
         mirror_structure (bool): Whether to mirror the source directory structure.
-        verbose (bool): Whether to print verbose output.
         dry_run (bool): Whether to perform a dry run (no file modifications).
         base_path (Optional[Path], optional): The base directory for the source files.
         Defaults to None.
     """
-    verbose_log(f"Extracting imports and functions from {file_path.name}", verbose)
+    verbose_log(f"Extracting imports and functions from {file_path.name}")
 
     with console.status(
         f"[bold green]Generating tests for {file_path.name}...[/bold green]",
@@ -56,7 +55,7 @@ def process_file(
             return
 
         if not functions_data:
-            if verbose:
+            if "UT_VERBOSE" in os.environ:
                 console.print(
                     f"[yellow]No functions found in {file_path.name}[/yellow]"
                 )
@@ -74,7 +73,7 @@ def process_file(
         if not dry_run:
             test_dir.mkdir(parents=True, exist_ok=True)
 
-        verbose_print(f"[dim]Test output directory: {test_dir}[/dim]", verbose)
+        verbose_print(f"[dim]Test output directory: {test_dir}[/dim]")
 
         module_import_path = calculate_import_path_simple(file_path)
 
@@ -88,25 +87,24 @@ def process_file(
             verbose_log(
                 f"\n  → Processing function {i + 1}/{len(functions_data)}: \
                             [cyan]{function_name}[/cyan]",
-                verbose,
             )
 
             # Generate prompt based on whether it's a class method
             # or standalone function
             if func_data["parent_class_code"]:
-                verbose_log("    Class method detected", verbose)
+                verbose_log("    Class method detected")
 
                 prompt = generate_class_method_prompt(
                     imports_code, function_name, func_data["parent_class_code"]
                 )
             else:
-                verbose_log("    Standalone function detected", verbose)
+                verbose_log("    Standalone function detected")
 
                 prompt = generate_standalone_prompt(
                     imports_code, func_data["function_code"]
                 )
 
-            verbose_log("    Sending to LLM...", verbose)
+            verbose_log("    Sending to LLM...")
 
             if not dry_run:
                 raw_response = generate_test_plan(prompt)
@@ -162,7 +160,6 @@ def process_project(
     file_path: Path,
     output_base: Path,
     mirror_structure: bool,
-    verbose: bool,
     dry_run: bool,
     conf: dict,
     base_path: Optional[Path] = None,
@@ -176,16 +173,12 @@ def process_project(
         file_path (Path): The path to the source file or directory.
         output_base (Path): The base output directory for generated tests.
         mirror_structure (bool): Whether to mirror the source directory structure.
-        verbose (bool): Whether to enable verbose output.
         dry_run (bool): Whether to perform a dry run without creating files.
         base_path (Optional[Path]): The base path for relative imports.
     """
-    verbose_log(f"Preparing planner prompt for {file_path.name}", verbose)
-    
-    if log_folder is None:
-        log_folder = datetime.now().strftime("%Y%m%d_%H%M%S")
+    verbose_log(f"Preparing planner prompt for {file_path.name}")
 
-    function_locs, class_locs, files_for_planner, function_dict = extract_code(file_path, ignore_list, verbose)
+    function_locs, class_locs, files_for_planner, function_dict = extract_code(file_path, ignore_list)
 
     console.print(f"[bold blue]Planning test generation[/bold blue]")
 
@@ -204,7 +197,7 @@ def process_project(
     if not dry_run:
         test_dir.mkdir(parents=True, exist_ok=True)
 
-    verbose_log(f"[dim]Test output directory: {test_dir}[/dim]", verbose)
+    verbose_log(f"[dim]Test output directory: {test_dir}[/dim]")
 
     module_import_path = calculate_import_path_simple(file_path)
     function_imports = []
@@ -237,20 +230,23 @@ def process_project(
         with open(predefined_plan_path, "r") as f:
             raw_response = f.read()
     else:
-        verbose_print("    Sending to LLM...", verbose)
+        verbose_print("    Sending to LLM...")
         raw_response = generate_test_plan(prompt)
         # Log both the prompt and the response to a subfolder of ./logs/planner/
         # The subfolder will be named based on the date and time the script was run
-        log_dir = Path("./logs/planner/" + log_folder)
+        log_dir = Path(os.environ['UT_LOG_DIR'] + "/planner")
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / f"planner_response_{file_path.stem}.txt"
-        with open(log_file, "w", encoding="utf-8") as f:
+        log_file_prompt = log_dir / f"planner_prompt_{file_path.stem}.txt"
+        with open(log_file_prompt, "w", encoding="utf-8") as f:
+            f.write(prompt)
+        log_file_response = log_dir / f"planner_response_{file_path.stem}.txt"
+        with open(log_file_response, "w", encoding="utf-8") as f:
             f.write(raw_response)
 
     if conf['planner']['plan_format'] == 'basic':
-        test_case_plans = parse_test_case_plan_old(raw_response, verbose)
+        test_case_plans = parse_test_case_plan_old(raw_response)
     elif conf['planner']['plan_format'] == 'json':
-        test_case_plans = parse_test_case_plan_json(raw_response, verbose)
+        test_case_plans = parse_test_case_plan_json(raw_response)
     else:
         raise ValueError(f"Unsupported plan format: {conf['planner']['plan_format']}")
     
@@ -267,7 +263,7 @@ def process_project(
     test_cases = {}
     import_statements = set()
     for test_name, test_plan in test_case_plans.items():
-        verbose_log(f"\n  → Generating test code for: [cyan]{test_name}[/cyan]", verbose)
+        verbose_log(f"\n  → Generating test code for: [cyan]{test_name}[/cyan]")
 
         # Get the code for the required functions
         required_function_names = test_plan.get('functions_required', [])
@@ -276,7 +272,7 @@ def process_project(
         for func_name in required_function_names:
             if func_name not in function_dict:
                 console.print(f"[yellow]Warning: Required function '{func_name}' not found in source code[/yellow]")
-                verbose_log(f"    (functions available: {list(function_dict.keys())})", verbose)
+                verbose_log(f"    (functions available: {list(function_dict.keys())})")
         function_code_context = "\n".join(required_function_codes)
         
         prompt = generate_coder_prompt(
@@ -285,6 +281,11 @@ def process_project(
         )
         prompts[test_name] = prompt
         raw_response = generate_test_case(prompt)
+        log_dir = Path(os.environ['UT_LOG_DIR'] + "/coder")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file_TC = log_dir / f"{test_name}.txt"
+        with open(log_file_TC, "w", encoding="utf-8") as f:
+            f.write(raw_response)
 
         if "```python" in raw_response:
             cleaned_response = raw_response.split("```python")[1].split("```")[0].strip()

@@ -1,50 +1,53 @@
 """Helper functions for CLI commands."""
 from rich.console import Console
+import os
 
-
-def verbose_message(message: str, verbose: bool, print_func: Console) -> None:
+def verbose_message(message: str, print_func: Console) -> None:
     """Print a message if verbose is enabled.
 
     Args:
         message (str): The message to print.
-        verbose (bool): Flag indicating if verbose mode is enabled.
         print_func (Console): The print function to use
             (e.g., console.print or console.log).
     """
-    if verbose:
+    if "UT_VERBOSE" in os.environ:
         print_func(message)
 
 
-def verbose_print(message: str, verbose: bool):
+def verbose_print(message: str):
     """Print a message if verbose is enabled.
 
     Args:
         message (str): The message to print.
-        verbose (bool): Flag indicating if verbose mode is enabled.
     """
-    verbose_message(message, verbose, Console().print)
+    verbose_message(message, Console().print)
 
 
-def verbose_log(message: str, verbose: bool):
+def verbose_log(message: str):
     """Print a log message if verbose is enabled.
+    This also gets written to the output log file.
 
     Args:
         message (str): The message to log.
-        verbose (bool): Flag indicating if verbose mode is enabled.
     """
-    verbose_message(message, verbose, Console().log)
+    verbose_message(message, Console().log)
+    # Create log file if it doesn't exist
+    if not os.path.exists(os.environ['UT_LOG_DIR'] + "/output.log"):
+        try:
+            logfile = open(os.environ['UT_LOG_DIR'] + "/output.log", "w")
+        except Exception as e:
+            verbose_message(f"[bold red]Error creating log file: {e}[/bold red]", Console().log)
+            return
+    else:
+        logfile = open(os.environ['UT_LOG_DIR'] + "/output.log", "a")
+    verbose_message(message, Console(file=logfile).log)
 
-
-def clean_temp_files(verbose: bool = True):
+def clean_temp_files():
     """Remove temporary files and directories created during test generation.
-
-    Args:
-        verbose (bool, optional): Flag indicating if verbose mode is enabled.
-            Defaults to True.
     """
     import subprocess
 
-    verbose_print("\n[dim]Cleaning up temporary files...[/dim]", verbose)
+    verbose_print("\n[dim]Cleaning up temporary files...[/dim]")
 
     # Commands to clean up common Python temporary files and directories
     commands = [

@@ -100,7 +100,7 @@ def calculate_import_path_simple(file_path: Path) -> str:
 
     return ".".join(parts)
 
-def extract_code(file_path: Path, ignore_list: list[str], verbose: Optional[bool] = False):
+def extract_code(file_path: Path, ignore_list: list[str]):
     # Determine which files contain python source code (assume there is no existing directory for pytest tests)
     python_files = list(file_path.rglob("*.py")) if file_path.is_dir() else ([file_path] if file_path.suffix == ".py" else [])
     if len(python_files) == 0:
@@ -115,7 +115,7 @@ def extract_code(file_path: Path, ignore_list: list[str], verbose: Optional[bool
     files_for_planner = []
     for file in python_files:
         if file.name in ignore_list or any([dir in ignore_list for dir in file.parent.__str__().split('/')]):
-            verbose_log(f"  → Ignoring {file.name}", verbose)
+            verbose_log(f"  → Ignoring {file.name}")
             continue
         # source_code_analysis returns a string with all the import statements and a list of dictionaries (one for each function)
         # Each dictionary contains the function_name, function_code, and parent_class_code (if it exists)
@@ -144,10 +144,9 @@ def extract_code(file_path: Path, ignore_list: list[str], verbose: Optional[bool
         return
 
     if len(all_function_names) == 0 and len(all_class_names) == 0:
-        if verbose:
-            console.print(
-                f"[bold red]Error: No functions or classes found in {file_path.name}, so no tests can be generated.[/bold red]"
-            )
+        console.print(
+            f"[bold red]Error: No functions or classes found in {file_path.name}, so no tests can be generated.[/bold red]"
+        )
         return
     
     console.print(f"[bold blue]Using code from {len(files_for_planner)} files with {len(all_function_names)} functions and {len(all_class_names)} classes[/bold blue]")

@@ -12,6 +12,7 @@ from ut.test_runner import DockerTestRunner
 from ut.results_parser import parse_pytest_output
 from omegaconf import OmegaConf
 import os, shutil
+from datetime import datetime
 
 console = Console()
 
@@ -48,7 +49,7 @@ def generate(
     ),
     plan_path: Optional[str] = typer.Option(
         None,
-        "--plan-path",
+        "--plan_path",
         help="Path to a predefined test plan file (overrides initial planning step)",
         metavar="FILE_PATH"
     )
@@ -70,9 +71,18 @@ def generate(
     After generation, review the tests in ut_output/ and move them to your
     project's test directory as needed.
     """
+    ### Set environment variables
+    # If verbose output is requested, set the appropriate environment variable
+    if verbose:
+        os.environ["UT_VERBOSE"] = "1"
+    # Save the name for the log directory to an environment variable if it is not already set
+    if "UT_LOG_DIR" not in os.environ:
+        os.environ["UT_LOG_DIR"] = os.path.join("logs",file_path.split('/')[-1] + "-" + datetime.now().strftime("%m/%d_%H:%M:%S"))
+    # Create the log directory if it doesn't exist
+    os.makedirs(os.environ['UT_LOG_DIR'], exist_ok=True)
 
     # Clean up temporary files
-    clean_temp_files(verbose=False)
+    clean_temp_files()
 
     # Get config
     if ".yaml" not in config_name:
@@ -119,9 +129,9 @@ def generate(
     if path.is_file():
         console.print(f"[bold blue]Processing single file: {path.name}[/bold blue]")
         if no_collab:
-            process_file(path, output_base, mirror_structure, verbose, dry_run)
+            process_file(path, output_base, mirror_structure, dry_run)
         else:
-            process_project(path, output_base, mirror_structure, verbose, dry_run, conf)
+            process_project(path, output_base, mirror_structure, dry_run, conf)
 
     elif path.is_dir():
         if no_collab:
@@ -133,7 +143,7 @@ def generate(
             console.print(
                 f"[bold blue]Processing directory: {path}[/bold blue]"
             )
-            process_project(path, output_base, mirror_structure, verbose, dry_run, conf)
+            process_project(path, output_base, mirror_structure, dry_run, conf)
 
     else:
         msg_sufix = "is neither a file nor a directory"

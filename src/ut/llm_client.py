@@ -64,7 +64,7 @@ def generate_test_case(prompt: str, port: int = 8000, model: str = "Qwen/Qwen2.5
     )
     return completion.choices[0].text
 
-def parse_test_case_plan_old(raw_plan: str, verbose: bool = False):
+def parse_test_case_plan_old(raw_plan: str):
     # Parse the response to get test plans for each function
     # Assume the response contains sections like:
     # **Test Case: `test_name`**
@@ -91,7 +91,7 @@ def parse_test_case_plan_old(raw_plan: str, verbose: bool = False):
         if desc_match:
             description = desc_match.group(1).strip()
             test_case_plans[test_name] = description
-            verbose_log(f"  → Extracted test plan: {test_name}", verbose)
+            verbose_log(f"  → Extracted test plan: {test_name}")
 
     return test_case_plans
 
@@ -124,7 +124,7 @@ def extract_json_objects(text: str, *, only_objects: bool = True
 
         i = end  # continue scanning after this parsed value
 
-def parse_test_case_plan_json(raw_plan: str, verbose: bool = False):
+def parse_test_case_plan_json(raw_plan: str):
     # Parse the response to get test plans for each function
     # The raw plan should contain at least one JSON object
 
@@ -137,6 +137,6 @@ def parse_test_case_plan_json(raw_plan: str, verbose: bool = False):
     for obj, (start, end) in json_objects:
         for test_case_name in obj:
             test_case_plans[test_case_name] = obj[test_case_name]
-            verbose_log(f"  → Extracted test plan: {test_case_name}", verbose)
+            verbose_log(f"  → Extracted test plan: {test_case_name}")
 
     return test_case_plans
