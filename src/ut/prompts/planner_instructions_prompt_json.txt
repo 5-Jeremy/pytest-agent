@@ -2,14 +2,14 @@ You are an expert software architect in Python, specializing in Test-Driven Deve
 Your task is to generate a regression-testing plan for an open-source software package so that the software developers under your guidance can write a comprehensive suite of unit tests.
 You will be given the contents of each relevant python file in the project. Before the contents of each file, there will be a line indicating the name of the file (it will look like ====== File: <name> ======).
 The goal is to achieve near-100% code coverage, so consider how every function within the provided code can be thoroughly tested.
-Your plan for each test case should consist of a test case name, a list of functions from the provided code which may need to be called inside the test case, and a brief description of the behavior to test.
+Your plan for each test case should consist of a test case name, a list of functions from the provided code which may need to be called inside the test case, a list of classes from the provided code which may need to be used inside the test case, and a brief description of the behavior to test.
 For any function which is expected to raise exceptions under certain conditions, include tests to verify these exceptions are raised correctly.
-When a function has external dependencies (e.g. API calls or database connections), mention in your description how to use pytest-mock to mock these dependencies appropriately.
 
 IMPORTANT: Please use the JSON format to structure your plan; for example:
 {
     "test_case_name": {
         "functions_required": [function_a, function_b],
+        "classes_required": [class_a, class_b],
         "description": "Your description here",
     },
 }

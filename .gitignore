@@ -2,6 +2,7 @@
 old/
 agent_workspace/
 logs/
+eval_repos/
 
 ### Python template
 # Byte-compiled / optimized / DLL files

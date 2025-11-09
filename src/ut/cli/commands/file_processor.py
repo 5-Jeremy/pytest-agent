@@ -9,7 +9,7 @@ from rich.console import Console
 from ut.cli.commands.constants import DEF_TEST_STRING
 from ut.cli.commands.helper import verbose_log, verbose_print
 from ut.llm_client import generate_test_plan, generate_test_case, parse_test_case_plan_old, parse_test_case_plan_json
-from ut.parser import calculate_import_path_simple, source_code_analysis, extract_code
+from ut.parser import calculate_import_path_simple, source_code_analysis, extract_code, get_function_imports
 from ut.prompts.prompt_builder import (
     generate_class_method_prompt,
     generate_standalone_prompt,
@@ -163,7 +163,7 @@ def process_project(
     dry_run: bool,
     conf: dict,
     base_path: Optional[Path] = None,
-    ignore_list: Optional[list[str]] = ['__init__.py', 'tests'],
+    ignore_list: Optional[list[str]] = ['__init__.py', 'tests', 'test'],
     log_folder: Optional[str] = None,
 ):
     """
@@ -178,7 +178,9 @@ def process_project(
     """
     verbose_log(f"Preparing planner prompt for {file_path.name}")
 
-    function_locs, class_locs, files_for_planner, function_dict = extract_code(file_path, ignore_list)
+    if conf['project'].get('include_init_files', False) and '__init__.py' in ignore_list:
+        ignore_list.remove('__init__.py')
+    function_locs, class_locs, files_for_planner, function_dict, class_dict = extract_code(file_path, ignore_list)
 
     console.print(f"[bold blue]Planning test generation[/bold blue]")
 
@@ -200,13 +202,7 @@ def process_project(
     verbose_log(f"[dim]Test output directory: {test_dir}[/dim]")
 
     module_import_path = calculate_import_path_simple(file_path)
-    function_imports = []
-    # Right now we assume that the directory on which generate is called is the top-level module, and hence the imports should start with it
-    for func_name, filename in function_locs.items():
-        # import_path_start = filename.find(file_path.name) # Using this would be less elegant
-        import_path = filename.relative_to(file_path)
-        import_path_converted = str(import_path).replace('/', '.').replace('.py', '')
-        function_imports.append("from " + import_path_converted + f" import {func_name}")
+    function_imports = get_function_imports(file_path, function_locs, class_locs)
 
     # Concatenate the source code of all files to send to the LLM
     combined_source_code = ""
@@ -217,7 +213,7 @@ def process_project(
         except Exception as e:
             console.print(f"[red]Failed to read {source_file.name}: {e} \n unit tests will not be generated for functions in this file [/red]")
             continue
-    
+
     # Make the prompt for the planner
     prompt = generate_planner_prompt(combined_source_code, template_path=conf['planner']['prompt_file'])
 
@@ -277,6 +273,16 @@ def process_project(
                 console.print(f"[yellow]Warning: Required function '{func_name}' not found in source code[/yellow]")
                 verbose_log(f"    (functions available: {list(function_dict.keys())})")
         function_code_context = "\n".join(required_function_codes)
+
+        # Get the code for the required classes
+        required_class_names = test_plan.get('classes_required', [])
+        required_class_codes = [class_dict[class_name]['code'] for class_name in required_class_names if class_name in class_dict]
+        # Warn if the name of a required class is not found in class_dict
+        for class_name in required_class_names:
+            if class_name not in class_dict:
+                console.print(f"[yellow]Warning: Required class '{class_name}' not found in source code[/yellow]")
+                verbose_log(f"    (classes available: {list(class_dict.keys())})")
+        function_code_context += "\n" + "\n".join(required_class_codes)
         
         prompt = generate_coder_prompt(
             function_code_context,
@@ -300,9 +306,14 @@ def process_project(
                 cleaned_response = raw_response.split("### Test function\n")[1].strip()
             else:
                 console.print(f"[yellow]Error: Unable to parse generated test for {test_name}.[/yellow]")
+                breakpoint()
+                continue
         new_imports, new_funcs = extract_imports_and_functions(cleaned_response)
-        import_statements.update(new_imports)
-        test_cases[test_name] = new_funcs[0]  # Assume one function per test case
+        if len(new_funcs) > 0:
+            import_statements.update(new_imports)
+            test_cases[test_name] = new_funcs[0]  # Assume one function per test case
+        else:
+            console.print(f"[yellow]Warning: No test functions extracted for {test_name}.[/yellow]")
         # print("Imports:\n")
         # for imp in new_imports:
         #     print(f"  - {imp}")
