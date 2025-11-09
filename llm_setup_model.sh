@@ -19,6 +19,7 @@ echo "-----------------------------------"
 echo "setting up extra-openai-models.yaml"
 echo "-----------------------------------"
 
+start_path=$(pwd)
 llmpath=$(dirname "$(llm logs path)")
 cd "$llmpath"
 touch extra-openai-models.yaml
@@ -36,3 +37,5 @@ echo "$models" | while IFS= read -r model; do
   api_key_name: "${TAMUS_AI_CHAT_KEY_ID}"
 EOF
 done
+
+cd "$start_path"
