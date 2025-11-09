@@ -52,6 +52,11 @@ def generate(
         "--plan_path",
         help="Path to a predefined test plan file (overrides initial planning step)",
         metavar="FILE_PATH"
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Do not warn about overwriting existing files in the output directory",
     )
 ) -> None:
     """
@@ -77,7 +82,8 @@ def generate(
         os.environ["UT_VERBOSE"] = "1"
     # Save the name for the log directory to an environment variable if it is not already set
     if "UT_LOG_DIR" not in os.environ:
-        os.environ["UT_LOG_DIR"] = os.path.join("logs",file_path.split('/')[-1] + "-" + datetime.now().strftime("%m/%d_%H:%M:%S"))
+        project_name = file_path.strip('/').split('/')[-1]
+        os.environ["UT_LOG_DIR"] = os.path.join("logs", project_name + "-" + datetime.now().strftime("%m%d_%H:%M:%S"))
     # Create the log directory if it doesn't exist
     os.makedirs(os.environ['UT_LOG_DIR'], exist_ok=True)
 
@@ -113,7 +119,7 @@ def generate(
 
     if not dry_run:
         console.print(f"[bold cyan]📁 Output directory: {output_base}/[/bold cyan]")
-        if output_base.exists() and any(output_base.iterdir()):
+        if output_base.exists() and any(output_base.iterdir()) and not overwrite:
             console.print(
                 "[yellow]⚠️  Output directory exists and contains files[/yellow]"
             )
