@@ -32,14 +32,14 @@ def verbose_log(message: str):
     """
     verbose_message(message, Console().log)
     # Create log file if it doesn't exist
-    if not os.path.exists(os.environ['UT_LOG_DIR'] + "/output.log"):
+    if not os.path.exists(os.environ['UT_LOG_FILE']):
         try:
-            logfile = open(os.environ['UT_LOG_DIR'] + "/output.log", "w")
+            logfile = open(os.environ['UT_LOG_FILE'], "w")
         except Exception as e:
             verbose_message(f"[bold red]Error creating log file: {e}[/bold red]", Console().log)
             return
     else:
-        logfile = open(os.environ['UT_LOG_DIR'] + "/output.log", "a")
+        logfile = open(os.environ['UT_LOG_FILE'], "a")
     verbose_message(message, Console(file=logfile).log)
 
 def clean_temp_files():

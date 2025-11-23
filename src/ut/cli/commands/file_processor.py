@@ -8,6 +8,7 @@ from rich.console import Console
 
 from ut.cli.commands.constants import DEF_TEST_STRING
 from ut.cli.commands.helper import verbose_log, verbose_print
+from ut.workspace import WorkspaceManager
 from ut.llm_client import generate_test_plan, generate_test_case, parse_test_case_plan_old, parse_test_case_plan_json
 from ut.parser import calculate_import_path_simple, source_code_analysis, extract_code, get_function_imports
 from ut.prompts.prompt_builder import (
@@ -162,9 +163,9 @@ def process_project(
     mirror_structure: bool,
     dry_run: bool,
     conf: dict,
+    workspace: WorkspaceManager,
     base_path: Optional[Path] = None,
     ignore_list: Optional[list[str]] = ['__init__.py', 'tests', 'test'],
-    log_folder: Optional[str] = None,
 ):
     """
     Process a Python project directory to generate unit tests.
@@ -184,20 +185,12 @@ def process_project(
 
     console.print(f"[bold blue]Planning test generation[/bold blue]")
 
-    """# # Determine output directory
-    # if mirror_structure and base_path:
-    #     # Mirror the source structure in output
-    #     rel_path = file_path.relative_to(base_path)
-    #     test_dir = output_base / rel_path.parent
-    # else:
-    #     # Flat structure - all tests in output_base
-    #     test_dir = output_base
-    """
     # Flat structure - all tests in output_base
-    test_dir = output_base
+    test_dir = workspace.get_coder_output_dir()
+    os.makedirs(test_dir, exist_ok=True)
 
-    if not dry_run:
-        test_dir.mkdir(parents=True, exist_ok=True)
+    # if not dry_run:
+    #     test_dir.mkdir(parents=True, exist_ok=True)
 
     verbose_log(f"[dim]Test output directory: {test_dir}[/dim]")
 
@@ -222,7 +215,7 @@ def process_project(
         return
     elif 'predefined_plan_path' in conf and conf['predefined_plan_path'] is not None:
         predefined_plan_path = conf['predefined_plan_path']
-        console.print(f"    [dim]Using predefined test plan from {predefined_plan_path}[/dim]")
+        verbose_log(f"Using predefined test plan from {predefined_plan_path}")
         with open(predefined_plan_path, "r") as f:
             raw_response = f.read()
     else:
@@ -233,14 +226,16 @@ def process_project(
             return
         # Log both the prompt and the response to a subfolder of ./logs/planner/
         # The subfolder will be named based on the date and time the script was run
-        log_dir = Path(os.environ['UT_LOG_DIR'] + "/planner")
-        log_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = Path(workspace.get_planner_output_dir())
         log_file_prompt = log_dir / f"planner_prompt_{file_path.stem}.txt"
         with open(log_file_prompt, "w", encoding="utf-8") as f:
             f.write(prompt)
-        log_file_response = log_dir / f"planner_response_{file_path.stem}.txt"
-        with open(log_file_response, "w", encoding="utf-8") as f:
-            f.write(raw_response)
+    # Even if we use a predefined plan, we still log it so that we can resume later (this may be redundant
+    # if the config is reused, but it's safer this way)
+    log_file_response = Path(workspace.get_planner_output_dir()) / f"planner_response_{file_path.stem}.txt"
+    with open(log_file_response, "w", encoding="utf-8") as f:
+        f.write(raw_response)
+    workspace.set_status("PLANNING_DONE")
 
     if conf['planner']['plan_format'] == 'basic':
         test_case_plans = parse_test_case_plan_old(raw_response)
@@ -290,9 +285,9 @@ def process_project(
         )
         prompts[test_name] = prompt
         raw_response = generate_test_case(prompt)
-        log_dir = Path(os.environ['UT_LOG_DIR'] + "/coder")
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_file_TC = log_dir / f"{test_name}.txt"
+        log_dir = Path(workspace.get_coder_output_dir())
+        log_file_TC = log_dir / "raw_outputs" / f"{test_name}.txt"
+        os.makedirs(log_file_TC.parent, exist_ok=True)
         with open(log_file_TC, "w", encoding="utf-8") as f:
             f.write(raw_response)
 
@@ -306,7 +301,7 @@ def process_project(
                 cleaned_response = raw_response.split("### Test function\n")[1].strip()
             else:
                 console.print(f"[yellow]Error: Unable to parse generated test for {test_name}.[/yellow]")
-                breakpoint()
+                # breakpoint()
                 continue
         new_imports, new_funcs = extract_imports_and_functions(cleaned_response)
         if len(new_funcs) > 0:
@@ -331,16 +326,19 @@ def process_project(
         )
         # Write the combined test file
         test_file_name = f"test_{file_path.stem}.py"
-        test_file_path = test_dir / test_file_name
+        test_file_path = Path(os.path.join(test_dir, test_file_name))
 
         with open(test_file_path, "w", encoding="utf-8") as f:
             f.write(combined_test_code)
 
-        rel_test_path = test_file_path.relative_to(output_base)
         console.print(
             f"\n  📄 Test file created: [bold green]\
-            {output_base}/{rel_test_path}[/bold green]"
+            {test_file_path}[/bold green]"
         )
         console.print(f"     Contains {len(test_cases)} test functions")
     else:
         console.print("[red]Error: No usable test cases parsed.[/red]")
+
+    workspace.set_status("CODE_GENERATED")
+    # To enable iterative refinement, we retain this information
+    return test_cases, test_case_plans

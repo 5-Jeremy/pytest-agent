@@ -10,8 +10,9 @@ from ut.cli.commands.helper import clean_temp_files, verbose_log
 from ut.llm_client import is_vllm_running
 from ut.test_runner import DockerTestRunner
 from ut.results_parser import parse_pytest_output
+from ut.workspace import WorkspaceManager
 from omegaconf import OmegaConf
-import os, shutil
+import os, shutil, pickle, json
 from datetime import datetime
 
 console = Console()
@@ -19,13 +20,7 @@ console = Console()
 
 def generate(
     file_path: str = typer.Argument(
-        ".", help="Path to source file or directory. Use '.' for current directory"
-    ),
-    output_dir: Optional[str] = typer.Option(
-        "ut_output",
-        "--output",
-        "-o",
-        help="Output directory for generated tests (default: ut_output/)",
+        None, help="Path to source file or directory."
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed output"),
     dry_run: bool = typer.Option(
@@ -42,7 +37,7 @@ def generate(
         help="Use the API model to directly generate tests rather than planning for a local LLM.",
     ),
     config_name: Optional[str] = typer.Option(
-        "old_prompt",
+        "json_format_DottedDict",
         "--config",
         "-c",
         help="Configuration name for prompt templates and settings",
@@ -51,6 +46,12 @@ def generate(
         None,
         "--plan_path",
         help="Path to a predefined test plan file (overrides initial planning step)",
+        metavar="FILE_PATH"
+    ),
+    resume_from: Optional[str] = typer.Option(
+        None,
+        "--resume_from",
+        help="Path to a workspace directory to resume from.",
         metavar="FILE_PATH"
     ),
     overwrite: bool = typer.Option(
@@ -76,16 +77,28 @@ def generate(
     After generation, review the tests in ut_output/ and move them to your
     project's test directory as needed.
     """
+    ### Setup WorkspaceManager
+    if resume_from is not None:
+        workspace = WorkspaceManager(base_dir=resume_from)
+    else:
+        name = "Workspaces/" + file_path.strip('/').split('/')[-1] + "_" + datetime.now().strftime("%m-%d_%H:%M:%S")
+        workspace = WorkspaceManager(base_dir=name, fresh_start=True)
+    # If we are resuming, there will already be an output.log file. Otherwise, create one
+    if not workspace.check_for_logfile():
+        with open(workspace.get_path("output.log"), "w") as log_file:
+            log_file.write(f"Log created at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+
     ### Set environment variables
     # If verbose output is requested, set the appropriate environment variable
     if verbose:
         os.environ["UT_VERBOSE"] = "1"
-    # Save the name for the log directory to an environment variable if it is not already set
-    if "UT_LOG_DIR" not in os.environ:
-        project_name = file_path.strip('/').split('/')[-1]
-        os.environ["UT_LOG_DIR"] = os.path.join("logs", project_name + "-" + datetime.now().strftime("%m%d_%H:%M:%S"))
-    # Create the log directory if it doesn't exist
-    os.makedirs(os.environ['UT_LOG_DIR'], exist_ok=True)
+    # Save the name for the log directory to an environment variable
+    if "UT_LOG_FILE" not in os.environ:
+        os.environ["UT_LOG_FILE"] = workspace.get_log_path()
+
+    # Mention in the log if we are resuming
+    if resume_from is not None:
+        verbose_log(f"Resuming from workspace at {resume_from}")
 
     # Clean up temporary files
     clean_temp_files()
@@ -96,6 +109,9 @@ def generate(
     conf = OmegaConf.load(os.path.join("configs", config_name))
     if plan_path is not None:
         conf['predefined_plan_path'] = plan_path
+    elif workspace.get_status() not in ["START"]:
+        conf['predefined_plan_path'] = Path(workspace.get_planner_output_dir()) / f"planner_response_{Path(file_path).stem}.txt"
+        assert os.path.exists(conf['predefined_plan_path']), f"Tried to resume but existing plan path {conf['predefined_plan_path']} could not be found."
     if not no_collab:
         if not is_vllm_running():
             console.print(
@@ -108,23 +124,8 @@ def generate(
         console.print("[bold red]Error: The file path cannot be empty.[/bold red]")
         raise typer.Exit(code=1)
 
-    if not output_dir:
-        console.print(
-            "[bold red]Error: The output directory cannot be empty.[/bold red]"
-        )
-        raise typer.Exit(code=1)
-
     path = Path(file_path).resolve()
-    output_base = Path(output_dir).resolve()
-
-    if not dry_run:
-        console.print(f"[bold cyan]📁 Output directory: {output_base}/[/bold cyan]")
-        if output_base.exists() and any(output_base.iterdir()) and not overwrite:
-            console.print(
-                "[yellow]⚠️  Output directory exists and contains files[/yellow]"
-            )
-            if not typer.confirm("Continue and potentially overwrite existing files?"):
-                raise typer.Exit(0)
+    output_base = Path(workspace.get_coder_output_dir()).resolve()
 
     is_not_python_file = path.is_file() and not path.suffix == ".py"
 
@@ -132,50 +133,58 @@ def generate(
         console.print(f"[bold red]Error: {path} is not a Python file[/bold red]")
         raise typer.Exit(1)
 
-    if path.is_file():
-        console.print(f"[bold blue]Processing single file: {path.name}[/bold blue]")
-        if no_collab:
-            process_file(path, output_base, mirror_structure, dry_run)
-        else:
-            process_project(path, output_base, mirror_structure, dry_run, conf)
+    # TODO: This solution will not work permanently, but for now we only try to resume after the initial 
+    # tests have been generated
+    if workspace.get_status() not in ["CODE_GENERATED", "CODE_TESTED"]:
+        if path.is_file():
+            console.print(f"[bold blue]Processing single file: {path.name}[/bold blue]")
+            if no_collab:
+                console.print(
+                    "[bold red]Error: Non-collaborative mode has not been fixed yet; logging is not correctly set up.[/bold red]"
+                )
+                raise typer.Exit(1)
+                # process_file(path, output_base, mirror_structure, dry_run)
+            else:
+                process_project(path, output_base, mirror_structure, dry_run, conf, workspace)
 
-    elif path.is_dir():
-        if no_collab:
-            console.print(
-                "[bold red]Warning: Directory processing is not implemented for non-collaborative mode.[/bold red]"
-            )
+        elif path.is_dir():
+            if no_collab:
+                console.print(
+                    "[bold red]Warning: Directory processing is not implemented for non-collaborative mode.[/bold red]"
+                )
+                raise typer.Exit(1)
+            else:
+                console.print(
+                    f"[bold blue]Processing directory: {path}[/bold blue]"
+                )
+                process_project(path, output_base, mirror_structure, dry_run, conf, workspace)
+
+        else:
+            msg_sufix = "is neither a file nor a directory"
+            console.print(f"[bold red]Error: '{file_path}' {msg_sufix}[/bold red]")
             raise typer.Exit(1)
-        else:
+
+        # Clean up temporary files
+        clean_temp_files()
+
+        if not dry_run:
             console.print(
-                f"[bold blue]Processing directory: {path}[/bold blue]"
+                f"\n✅ [bold green]Tests generated successfully in \
+                    {output_base}/[/bold green]"
             )
-            process_project(path, output_base, mirror_structure, dry_run, conf)
-
+        else:
+            console.print("\n[yellow]Dry run completed. No files were created.[/yellow]")
+            return
     else:
-        msg_sufix = "is neither a file nor a directory"
-        console.print(f"[bold red]Error: '{file_path}' {msg_sufix}[/bold red]")
-        raise typer.Exit(1)
+        console.print(f"[bold blue]Test code is already generated. Running tests...[/bold blue]")
 
-    # Clean up temporary files
-    clean_temp_files()
-
-    if not dry_run:
-        console.print(
-            f"\n✅ [bold green]Tests generated successfully in \
-                {output_base}/[/bold green]"
-        )
-    else:
-        console.print("\n[yellow]Dry run completed. No files were created.[/yellow]")
-        return
+    # Save test_cases to a file in case we need to resume later; note that test_case_plans can be extracted
+    # from the logged files
+    # log_dir = workspace.get_resume_dir()
+    # pickle.dump(test_cases, open(os.path.join(log_dir, "test_cases.pkl"), "wb"))
 
     ### Run the generated tests inside a Docker container
-    console.print(f"\n[bold blue]Cleaning files from agent_workspace[/bold blue]")
-    try:
-        shutil.rmtree("agent_workspace")
-        os.makedirs("agent_workspace")
-    except Exception as e:
-        console.print(f"[bold red]Error cleaning agent_workspace: {e}[/bold red]")
-        return
+    test_report_save_dir = workspace.get_coder_output_dir()
     image_name = conf.get('project', {}).get('docker_image_name', None)
     if image_name is not None:
         assert 'test_dir_in_container' in conf['project']
@@ -187,6 +196,8 @@ def generate(
         test_runner.start_container()
         test_results_string = test_runner.run_pytest(os.path.join(output_base, f"test_{path.stem}.py"))
         test_results_dict = parse_pytest_output(test_results_string)
+        # Save the test results to a json file
+        json.dump(test_results_dict, open(os.path.join(test_report_save_dir, "test_results.json"), "w"))
         print(test_results_dict)
     else:
         console.print(f"\n[bold yellow]Skipping test execution: No Docker image specified in configuration.[/bold yellow]")
