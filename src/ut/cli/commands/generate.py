@@ -7,7 +7,7 @@ from rich.console import Console
 
 from ut.cli.commands.file_processor import process_file, process_project
 from ut.cli.commands.helper import clean_temp_files, verbose_log
-from ut.llm_client import is_vllm_running
+from ut.llm_client import is_vllm_running, parse_test_case_plan_old, parse_test_case_plan_json
 from ut.test_runner import DockerTestRunner
 from ut.results_parser import parse_pytest_output
 from ut.workspace import WorkspaceManager
@@ -145,7 +145,7 @@ def generate(
                 raise typer.Exit(1)
                 # process_file(path, output_base, mirror_structure, dry_run)
             else:
-                process_project(path, output_base, mirror_structure, dry_run, conf, workspace)
+                test_cases, test_case_plans = process_project(path, output_base, mirror_structure, dry_run, conf, workspace)
 
         elif path.is_dir():
             if no_collab:
@@ -157,7 +157,7 @@ def generate(
                 console.print(
                     f"[bold blue]Processing directory: {path}[/bold blue]"
                 )
-                process_project(path, output_base, mirror_structure, dry_run, conf, workspace)
+                test_cases, test_case_plans = process_project(path, output_base, mirror_structure, dry_run, conf, workspace)
 
         else:
             msg_sufix = "is neither a file nor a directory"
@@ -175,13 +175,26 @@ def generate(
         else:
             console.print("\n[yellow]Dry run completed. No files were created.[/yellow]")
             return
+        # Save test_cases to a file in case we need to resume later; note that test_case_plans can be extracted
+        # from the logged files
+        verbose_log("Saving generated test cases to resume directory.")
+        log_dir = workspace.get_resume_dir()
+        pickle.dump(test_cases, open(os.path.join(log_dir, "test_cases.pkl"), "wb"))
+        workspace.set_status("CODE_GENERATED")
     else:
         console.print(f"[bold blue]Test code is already generated. Running tests...[/bold blue]")
-
-    # Save test_cases to a file in case we need to resume later; note that test_case_plans can be extracted
-    # from the logged files
-    # log_dir = workspace.get_resume_dir()
-    # pickle.dump(test_cases, open(os.path.join(log_dir, "test_cases.pkl"), "wb"))
+        # Load test_cases from the resume directory
+        log_dir = workspace.get_resume_dir()
+        test_cases = pickle.load(open(os.path.join(log_dir, "test_cases.pkl"), "rb"))
+        # Load existing plan
+        with open(Path(workspace.get_planner_output_dir()) / f"planner_response_{Path(file_path).stem}.txt", "r") as f:
+            full_plan = f.read()
+        if conf['planner']['plan_format'] == 'basic':
+            test_case_plans = parse_test_case_plan_old(full_plan)
+        elif conf['planner']['plan_format'] == 'json':
+            test_case_plans = parse_test_case_plan_json(full_plan)
+        else:
+            raise ValueError(f"Unsupported plan format: {conf['planner']['plan_format']}")
 
     ### Run the generated tests inside a Docker container
     test_report_save_dir = workspace.get_coder_output_dir()

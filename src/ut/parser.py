@@ -205,6 +205,28 @@ def get_function_imports(file_path, function_locs, class_locs):
         function_imports.append("from " + import_path_converted + f" import {class_name}")
     return function_imports
 
+def get_context_for_test_gen(test_plan, function_dict, class_dict) -> str:
+    # Get the code for the required functions
+    required_function_names = test_plan.get('functions_required', [])
+    required_function_codes = [function_dict[func_name] for func_name in required_function_names if func_name in function_dict]
+    # Warn if the name of a required function is not found in function_dict
+    for func_name in required_function_names:
+        if func_name not in function_dict:
+            console.print(f"[yellow]Warning: Required function '{func_name}' not found in source code[/yellow]")
+            verbose_log(f"    (functions available: {list(function_dict.keys())})")
+    function_code_context = "\n".join(required_function_codes)
+
+    # Get the code for the required classes
+    required_class_names = test_plan.get('classes_required', [])
+    required_class_codes = [class_dict[class_name]['code'] for class_name in required_class_names if class_name in class_dict]
+    # Warn if the name of a required class is not found in class_dict
+    for class_name in required_class_names:
+        if class_name not in class_dict:
+            console.print(f"[yellow]Warning: Required class '{class_name}' not found in source code[/yellow]")
+            verbose_log(f"    (classes available: {list(class_dict.keys())})")
+    function_code_context += "\n" + "\n".join(required_class_codes)
+    return function_code_context
+
 def extract_class_name(class_code: str) -> Optional[str]:
     """Extract the class name from the given class code.
 

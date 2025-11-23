@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from ut.cli.commands.constants import DEF_TEST_STRING
-
+from ut.llm_client import generate_test_case
 
 def write_test_file(function_name, test_code, output_dir):
     """Write the generated test code to a file.
@@ -63,6 +63,25 @@ def postprocess_test_code(
     test_code = test_code.replace("```python", "").replace("```", "")
 
     return test_code.strip()
+
+def generate_test_from_prompt(prompt, test_name, output_dir) -> str:
+    raw_response = generate_test_case(prompt)
+    log_dir = Path(output_dir)
+    log_file_TC = log_dir / "raw_outputs" / f"{test_name}.txt"
+    os.makedirs(log_file_TC.parent, exist_ok=True)
+    with open(log_file_TC, "w", encoding="utf-8") as f:
+        f.write(raw_response)
+    if "```python" in raw_response:
+        cleaned_response = raw_response.split("```python")[1].split("```")[0].strip()
+    else:
+        # If the model fails to follow the formatting instructions, we can still try to parse it
+        if "### Import statements\n" in raw_response:
+            cleaned_response = raw_response.split("### Import statements\n")[1].strip()
+        elif "### Test function\n" in raw_response:
+            cleaned_response = raw_response.split("### Test function\n")[1].strip()
+        else:
+            cleaned_response = None
+    return cleaned_response
 
 
 def extract_imports_and_functions(test_code: str) -> tuple[set, list]:

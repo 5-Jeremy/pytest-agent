@@ -9,8 +9,8 @@ from rich.console import Console
 from ut.cli.commands.constants import DEF_TEST_STRING
 from ut.cli.commands.helper import verbose_log, verbose_print
 from ut.workspace import WorkspaceManager
-from ut.llm_client import generate_test_plan, generate_test_case, parse_test_case_plan_old, parse_test_case_plan_json
-from ut.parser import calculate_import_path_simple, source_code_analysis, extract_code, get_function_imports
+from ut.llm_client import generate_test_plan, parse_test_case_plan_old, parse_test_case_plan_json
+from ut.parser import calculate_import_path_simple, source_code_analysis, extract_code, get_function_imports, get_context_for_test_gen
 from ut.prompts.prompt_builder import (
     generate_class_method_prompt,
     generate_standalone_prompt,
@@ -18,6 +18,7 @@ from ut.prompts.prompt_builder import (
     generate_coder_prompt,
 )
 from ut.test_writer import (
+    generate_test_from_prompt,
     combine_test_code,
     extract_imports_and_functions,
     postprocess_test_code_enhanced,
@@ -259,50 +260,23 @@ def process_project(
     for test_name, test_plan in test_case_plans.items():
         verbose_log(f"\n  → Generating test code for: [cyan]{test_name}[/cyan]")
 
-        # Get the code for the required functions
-        required_function_names = test_plan.get('functions_required', [])
-        required_function_codes = [function_dict[func_name] for func_name in required_function_names if func_name in function_dict]
-        # Warn if the name of a required function is not found in function_dict
-        for func_name in required_function_names:
-            if func_name not in function_dict:
-                console.print(f"[yellow]Warning: Required function '{func_name}' not found in source code[/yellow]")
-                verbose_log(f"    (functions available: {list(function_dict.keys())})")
-        function_code_context = "\n".join(required_function_codes)
-
-        # Get the code for the required classes
-        required_class_names = test_plan.get('classes_required', [])
-        required_class_codes = [class_dict[class_name]['code'] for class_name in required_class_names if class_name in class_dict]
-        # Warn if the name of a required class is not found in class_dict
-        for class_name in required_class_names:
-            if class_name not in class_dict:
-                console.print(f"[yellow]Warning: Required class '{class_name}' not found in source code[/yellow]")
-                verbose_log(f"    (classes available: {list(class_dict.keys())})")
-        function_code_context += "\n" + "\n".join(required_class_codes)
+        function_code_context = get_context_for_test_gen(
+            test_plan, function_dict, class_dict
+        )
         
         prompt = generate_coder_prompt(
             function_code_context,
             f"{test_name}: {test_plan}"
         )
         prompts[test_name] = prompt
-        raw_response = generate_test_case(prompt)
-        log_dir = Path(workspace.get_coder_output_dir())
-        log_file_TC = log_dir / "raw_outputs" / f"{test_name}.txt"
-        os.makedirs(log_file_TC.parent, exist_ok=True)
-        with open(log_file_TC, "w", encoding="utf-8") as f:
-            f.write(raw_response)
 
-        if "```python" in raw_response:
-            cleaned_response = raw_response.split("```python")[1].split("```")[0].strip()
-        else:
-            # If the model fails to follow the formatting instructions, we can still try to parse it
-            if "### Import statements\n" in raw_response:
-                cleaned_response = raw_response.split("### Import statements\n")[1].strip()
-            elif "### Test function\n" in raw_response:
-                cleaned_response = raw_response.split("### Test function\n")[1].strip()
-            else:
-                console.print(f"[yellow]Error: Unable to parse generated test for {test_name}.[/yellow]")
-                # breakpoint()
-                continue
+        cleaned_response = generate_test_from_prompt(prompt, test_name, os.path.join(test_dir, "raw_outputs"))
+                
+        if cleaned_response is None:
+            console.print(f"[yellow]Error: Unable to parse generated test for {test_name}.[/yellow]")
+            # breakpoint()
+            continue
+
         new_imports, new_funcs = extract_imports_and_functions(cleaned_response)
         if len(new_funcs) > 0:
             import_statements.update(new_imports)
@@ -339,6 +313,5 @@ def process_project(
     else:
         console.print("[red]Error: No usable test cases parsed.[/red]")
 
-    workspace.set_status("CODE_GENERATED")
     # To enable iterative refinement, we retain this information
     return test_cases, test_case_plans
