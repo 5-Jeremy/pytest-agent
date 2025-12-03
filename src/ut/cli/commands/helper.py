@@ -10,7 +10,7 @@ def verbose_message(message: str, print_func: Console) -> None:
         print_func (Console): The print function to use
             (e.g., console.print or console.log).
     """
-    if "UT_VERBOSE" in os.environ:
+    if "UT_VERBOSE" in os.environ and os.environ["UT_VERBOSE"] == "1":
         print_func(message)
 
 
@@ -31,6 +31,8 @@ def verbose_log(message: str):
         message (str): The message to log.
     """
     verbose_message(message, Console().log)
+    if os.environ['UT_LOG_FILE'] == "None":
+            return
     # Create log file if it doesn't exist
     if not os.path.exists(os.environ['UT_LOG_FILE']):
         try:

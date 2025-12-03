@@ -1,4 +1,5 @@
 import os, pickle, json
+from src.ut.llm_client import parse_test_case_plan_json
 
 class WorkspaceManager:
     def __init__(self, base_dir: str, fresh_start: bool = False) -> None:
@@ -10,7 +11,8 @@ class WorkspaceManager:
             self.set_status("START")
             self.coder_iteration = 0
         else:
-            assert os.path.exists(self.get_planner_output_dir()), "Workspace does not contain planner output directory."
+            if not os.path.exists(self.get_planner_output_dir()):
+                raise FileNotFoundError("Workspace does not contain planner output directory.")
             # Account for any previously completed coder iterations
             self.coder_iteration = self.get_last_completed_coder_iteration() + 1
             if not os.path.exists(self.get_coder_output_dir()):
@@ -59,6 +61,18 @@ class WorkspaceManager:
             return -1
         return max_num
     
+    def load_all_test_results(self) -> dict:
+        all_test_results = {}
+        last_completed_iteration = self.get_last_completed_coder_iteration()
+        for iteration in range(last_completed_iteration + 1):
+            iteration_dir = os.path.join(self.coder_dir, f"iteration_{iteration}")
+            test_results_path = os.path.join(iteration_dir, "test_results.json")
+            if os.path.exists(test_results_path):
+                with open(test_results_path, "r") as f:
+                    test_results = json.load(f)
+                all_test_results[iteration] = test_results
+        return all_test_results
+
     def save_func_and_class_info(self, func_and_class_info: dict) -> None:
         with open(os.path.join(self.get_resume_dir(), "func_and_class_info.pkl"), "wb") as f:
             pickle.dump(func_and_class_info, f)
@@ -85,6 +99,19 @@ class WorkspaceManager:
         with open(os.path.join(target_dir, "test_results.json"), "r") as f:
             test_results = json.load(f)
         return test_results
+
+    # This function loads the raw planner response and then parses it so it can return 
+    def get_test_case_plans(self) -> dict:
+        plan_path = None
+        for file in os.listdir(self.get_planner_output_dir()):
+            if file.startswith("planner_response_") and file.endswith(".txt"):
+                plan_path = os.path.join(self.get_planner_output_dir(), file)
+                break
+        if plan_path is None:
+            raise FileNotFoundError("Test case plan file not found in planner output directory.")
+        with open(plan_path, "r") as f:
+            plan = parse_test_case_plan_json(f.read())
+        return plan
 
     def get_coder_output_dir(self) -> str:
         return os.path.join(self.coder_dir, f"iteration_{self.coder_iteration}")

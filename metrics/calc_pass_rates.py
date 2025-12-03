@@ -1,0 +1,51 @@
+
+""" This script calculates the pass rate for each iteration of the coder agent based on the planned tests and
+    the test_results.json files. """
+
+import os, argparse, sys
+from src.ut.workspace import WorkspaceManager
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Calculate pass rates from test results.")
+    parser.add_argument("dir", type=str, help="Path to a workspace.")
+    return parser.parse_args()
+
+if __name__ == "__main__":
+    # Some of the functions called here will add unnecessary output unless we disable it
+    os.environ["UT_VERBOSE"] = "0"
+    os.environ["UT_LOG_FILE"] = "None"
+    args = parse_args()
+    directory_path = args.dir
+    try:
+        workspace = WorkspaceManager(base_dir=directory_path, fresh_start=False)
+        # Get the number of planned tests
+        # TODO: Adjust to the plan format if it is not JSON; for now we assume JSON
+        test_case_plans = workspace.get_test_case_plans()
+        all_test_results = workspace.load_all_test_results()
+    except FileNotFoundError as e:
+        print(f"Invalid workspace: {e}")
+        exit(1)
+
+    all_planned_tests = list(test_case_plans.keys())
+    num_planned_tests = len(all_planned_tests)
+    print(f"Total planned tests: {num_planned_tests}")
+    
+    # Get the set of passed tests for each iteration 
+    all_passed_tests = []
+    for iteration in sorted(all_test_results.keys()):
+        test_results = all_test_results[iteration]
+        total_tests = len(test_results)
+        all_test_names = list(test_results.keys())
+        # Check for tests that were already passed being redone
+        for name in all_test_names:
+            if name in all_passed_tests:
+                print(f"Warning: Test {name} reused in iteration {iteration} but was already passed.")
+        passed_test_names = [name for name, result in test_results.items() if result == "PASSED"]
+        for name in passed_test_names:
+            if name not in all_passed_tests:
+                all_passed_tests.append(name)
+        passed_tests = sum(1 for result in test_results.values() if result == "PASSED")
+        pass_rate = (passed_tests / total_tests) * 100 if total_tests > 0 else 0.0
+        print(f"Iteration {iteration}: {passed_tests}/{total_tests} tests passed ({pass_rate:.2f}%)")
+        print(f"  → Cumulative passed tests: {len(all_passed_tests)}/{num_planned_tests} ({(len(all_passed_tests)/num_planned_tests)*100:.2f}%)")
+
