@@ -64,6 +64,7 @@ def postprocess_test_code(
 
     return test_code.strip()
 
+# The generated tests will be placed in a "raw_outputs" subdirectory of output_dir
 def generate_test_from_prompt(prompt, test_name, output_dir) -> str:
     raw_response = generate_test_case(prompt)
     log_dir = Path(output_dir)

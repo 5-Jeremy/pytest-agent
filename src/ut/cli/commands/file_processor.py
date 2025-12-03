@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
-import os
+import os, pickle
 
 from rich.console import Console
 
@@ -156,6 +156,32 @@ def process_file(
             )
             console.print(f"     Contains {len(all_test_functions)} test functions")
 
+def combine_and_write_tests(
+        test_cases: dict, 
+        import_statements: set, 
+        file_path: Path, 
+        test_dir: str, 
+        module_import_path: str
+    ):
+    # Create a single file with all the test cases
+    if len(test_cases) > 0:
+        combined_test_code = combine_test_code(
+            import_statements, list(test_cases.values()), file_path.stem, module_import_path
+        )
+        # Write the combined test file
+        test_file_name = f"test_{file_path.stem}.py"
+        test_file_path = Path(os.path.join(test_dir, test_file_name))
+
+        with open(test_file_path, "w", encoding="utf-8") as f:
+            f.write(combined_test_code)
+
+        console.print(
+            f"\n  📄 Test file created: [bold green]\
+            {test_file_path}[/bold green]"
+        )
+        console.print(f"     Contains {len(test_cases)} test functions")
+    else:
+        console.print("[red]Error: No usable test cases parsed.[/red]")
 
 # This function assumes collaboration
 def process_project(
@@ -182,7 +208,8 @@ def process_project(
 
     if conf['project'].get('include_init_files', False) and '__init__.py' in ignore_list:
         ignore_list.remove('__init__.py')
-    function_locs, class_locs, files_for_planner, function_dict, class_dict = extract_code(file_path, ignore_list)
+    function_locs, class_locs, files_for_planner, function_dict, class_dict, func_and_class_info = extract_code(file_path, ignore_list)
+    workspace.save_func_and_class_info(func_and_class_info)
 
     console.print(f"[bold blue]Planning test generation[/bold blue]")
 
@@ -270,7 +297,7 @@ def process_project(
         )
         prompts[test_name] = prompt
 
-        cleaned_response = generate_test_from_prompt(prompt, test_name, os.path.join(test_dir, "raw_outputs"))
+        cleaned_response = generate_test_from_prompt(prompt, test_name, test_dir)
                 
         if cleaned_response is None:
             console.print(f"[yellow]Error: Unable to parse generated test for {test_name}.[/yellow]")
@@ -294,24 +321,7 @@ def process_project(
     import_statements.update(function_imports)
     
     # Create a single file with all the test cases
-    if len(test_cases) > 0:
-        combined_test_code = combine_test_code(
-            import_statements, list(test_cases.values()), file_path.stem, module_import_path
-        )
-        # Write the combined test file
-        test_file_name = f"test_{file_path.stem}.py"
-        test_file_path = Path(os.path.join(test_dir, test_file_name))
-
-        with open(test_file_path, "w", encoding="utf-8") as f:
-            f.write(combined_test_code)
-
-        console.print(
-            f"\n  📄 Test file created: [bold green]\
-            {test_file_path}[/bold green]"
-        )
-        console.print(f"     Contains {len(test_cases)} test functions")
-    else:
-        console.print("[red]Error: No usable test cases parsed.[/red]")
+    combine_and_write_tests(test_cases, import_statements, file_path, test_dir, module_import_path)
 
     # To enable iterative refinement, we retain this information
     return test_cases, test_case_plans

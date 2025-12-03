@@ -1,4 +1,4 @@
-import os
+import os, pickle, json
 
 class WorkspaceManager:
     def __init__(self, base_dir: str, fresh_start: bool = False) -> None:
@@ -11,9 +11,16 @@ class WorkspaceManager:
             self.coder_iteration = 0
         else:
             assert os.path.exists(self.get_planner_output_dir()), "Workspace does not contain planner output directory."
-            self.coder_iteration = 0 # TODO: Make this dynamic based on existing iterations
-            assert os.path.exists(self.get_coder_output_dir()), "Workspace does not contain coder output directory for iteration 0."
-
+            # Account for any previously completed coder iterations
+            self.coder_iteration = self.get_last_completed_coder_iteration() + 1
+            if not os.path.exists(self.get_coder_output_dir()):
+                self.create_subdirectory(f"coder/iteration_{self.coder_iteration}")
+            # If the status is CODE_GENERATED but the current coder iteration directory does not have a .py 
+            # file, we need to ignore the status and generate new tests
+            if self.get_status() == "CODE_GENERATED" and self.coder_iteration > 0:
+                if len([f for f in os.listdir(self.get_coder_output_dir()) if f.endswith(".py")]) == 0:
+                    self.set_status("CODE_TESTED")
+   
     def set_status(self, status: str) -> None:
         assert status in ["START", "PLANNING_DONE", "CODE_GENERATED", "CODE_TESTED"], f"Invalid status: {status}"
         status_file_path = self.get_path("status.txt")
@@ -29,7 +36,55 @@ class WorkspaceManager:
         else:
             raise FileNotFoundError(f"Status file not found at {status_file_path}")
         
-    # def get_coder_iteration_from_(self) -> int:
+    def next_coder_iteration(self) -> None:
+        # Add a file marking the previous iteration as complete
+        with open(os.path.join(self.get_coder_output_dir(), "DONE.txt"), "w") as marker_file:
+            marker_file.write("DONE")
+        self.coder_iteration += 1
+        self.create_subdirectory(f"coder/iteration_{self.coder_iteration}")
+
+    def get_last_completed_coder_iteration(self) -> int:
+        """ Determines the last completed coder iteration based on the subfolders of coder_dir and the 
+        presence of test_results.json. This is mainly used for resuming interrupted runs."""
+        # List subdirectories in coder_dir
+        subdirs = [d for d in os.listdir(self.coder_dir) if os.path.isdir(os.path.join(self.coder_dir, d))]
+        subdirs_with_test_results = [d for d in subdirs if "test_results.json" in os.listdir(os.path.join(self.coder_dir, d))]
+        if not subdirs_with_test_results:
+            return -1  # No completed iterations
+        # Extract iteration numbers and return the maximum
+        iteration_numbers = [int(d.split("_")[1]) for d in subdirs_with_test_results if d.startswith("iteration_")]
+        try:
+            max_num = max(iteration_numbers)
+        except ValueError:
+            return -1
+        return max_num
+    
+    def save_func_and_class_info(self, func_and_class_info: dict) -> None:
+        with open(os.path.join(self.get_resume_dir(), "func_and_class_info.pkl"), "wb") as f:
+            pickle.dump(func_and_class_info, f)
+
+    def load_func_and_class_info(self) -> dict:
+        assert os.path.exists(os.path.join(self.get_resume_dir(), "func_and_class_info.pkl")), "Function and class info file not found."
+        with open(os.path.join(self.get_resume_dir(), "func_and_class_info.pkl"), "rb") as f:
+            func_and_class_info = pickle.load(f)
+        return func_and_class_info
+    
+    def save_test_results(self, test_results: dict) -> None:
+        with open(os.path.join(self.get_coder_output_dir(), "test_results.json"), "w") as f:
+            json.dump(test_results, f)
+    
+    def load_test_results(self) -> dict:
+        # We may need to look at the previous coder iteration for test results
+        if os.path.exists(os.path.join(self.get_coder_output_dir(), "test_results.json")):
+            target_dir = self.get_coder_output_dir()
+        elif self.coder_iteration > 0 and os.path.exists(os.path.join(self.get_path("coder", f"iteration_{self.coder_iteration - 1}"), "test_results.json")):
+            target_dir = self.get_path("coder", f"iteration_{self.coder_iteration - 1}")
+        else:
+            breakpoint()
+            raise FileNotFoundError("Test results file not found in current or previous coder iteration directories.")
+        with open(os.path.join(target_dir, "test_results.json"), "r") as f:
+            test_results = json.load(f)
+        return test_results
 
     def get_coder_output_dir(self) -> str:
         return os.path.join(self.coder_dir, f"iteration_{self.coder_iteration}")

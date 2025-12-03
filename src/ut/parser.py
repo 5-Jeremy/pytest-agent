@@ -310,4 +310,21 @@ def extract_code(file_path: Path, ignore_list: list[str]):
     
     console.print(f"[bold blue]Using code from {len(files_for_planner)} files with {len(all_function_names)} functions and {len(all_class_names)} classes[/bold blue]")
 
-    return function_locs, class_locs, files_for_planner, function_dict, class_dict
+    # Combine extracted info into a single compact data structure
+    func_and_class_info = {
+        "functions": {
+            name: {
+                "location": function_locs[name],
+                "code": function_dict[name]
+            } for name in all_function_names
+        },
+        "classes": {
+            name: {
+                "location": class_locs[name],
+                "code": class_dict[name]["code"],
+                "methods": class_dict[name]["methods"]
+            } for name in all_class_names
+        }
+    }
+
+    return function_locs, class_locs, files_for_planner, function_dict, class_dict, func_and_class_info
