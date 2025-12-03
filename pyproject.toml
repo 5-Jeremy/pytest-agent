@@ -61,6 +61,25 @@ source = [
 show_missing = true
 omit = ["*/__init__.py"]
 
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+# Only enable rules that correspond to real runtime or semantic failures
+lint.select = [
+    "E9",   # Syntax errors
+    "F",    # Undefined names, unused imports, bad redefinitions
+    #"I001", # Import errors
+    "PLE",  # pylint errors (actual runtime problems)
+    #"PLR",  # refactor only if dangerous constructs
+    #"PLC",  # convention that breaks code
+]
+
+lint.ignore = [
+    "F401", # unused import (not a runtime failure)
+    "F841", # unused variable
+]
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"

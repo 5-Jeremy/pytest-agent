@@ -10,7 +10,8 @@ from ut.cli.commands.helper import clean_temp_files, verbose_log
 from ut.llm_client import is_vllm_running, parse_test_case_plan_old, parse_test_case_plan_json
 from ut.parser import get_context_for_test_gen, calculate_import_path_simple, get_function_imports
 from ut.prompts.prompt_builder import generate_coder_prompt
-from ut.test_writer import generate_test_from_prompt, extract_imports_and_functions
+from ut.test_writer import generate_test_from_prompt, extract_imports_and_functions, combine_test_code
+from ut.test_checker import lint_test_case
 from ut.test_runner import DockerTestRunner
 from ut.results_parser import parse_pytest_output
 from ut.workspace import WorkspaceManager
@@ -211,6 +212,8 @@ def generate(
                                        working_dir=conf['project'].get('working_dir', Path(test_dir).parent.as_posix()))
         test_runner.start_container()
         test_results_string = test_runner.run_pytest(test_filepath)
+        verbose_log("Raw pytest output:\n" + test_results_string)
+        console.print("Raw pytest output:\n" + test_results_string)
         test_results_dict = parse_pytest_output(test_results_string)
         return test_results_dict
 
@@ -274,13 +277,17 @@ def generate(
             # information about the failure
             prompts = {}
             test_cases = {}
-            import_statements = set()
             func_and_class_info = workspace.load_func_and_class_info()
             function_dict = {name: func_and_class_info['functions'][name]["code"] for name in func_and_class_info['functions'].keys()}
             # Note that each key in class_dict is expected to be a dict, rather than a string as in function_dict
             class_dict = {name: func_and_class_info['classes'][name]for name in func_and_class_info['classes'].keys()}
             function_locs = {name: func_and_class_info['functions'][name]["location"] for name in func_and_class_info['functions'].keys()}
             class_locs = {name: func_and_class_info['classes'][name]["location"] for name in func_and_class_info['classes'].keys()}
+            import_statements = set()
+            # Make sure the functions to be tested are imported in the test file
+            function_imports = get_function_imports(path, function_locs, class_locs)
+            import_statements.update(function_imports)
+            module_import_path = calculate_import_path_simple(path)
             if len(retry_from_scratch) > 0:
                 for test_name in retry_from_scratch:
                     verbose_log(f"\n  → Will re-use code generation prompt for test: [cyan]{test_name}[/cyan]")
@@ -324,19 +331,26 @@ def generate(
                     # breakpoint()
                     continue
 
-                new_imports, new_funcs = extract_imports_and_functions(cleaned_response)
+                # For convenience, we use the same function that is used to create the final test file here
+                cleaned_response_with_with_function_imports = combine_test_code(
+                        function_imports,
+                        [cleaned_response],
+                        path.stem, # This is the module name
+                        module_import_path
+                    )
+                passed_lint, lint_message = lint_test_case(cleaned_response_with_with_function_imports)
+                if not passed_lint:
+                    console.print(f"[yellow]Linting failed for {test_name}. Will retry on next iteration.[/yellow]")
+                    continue
+
+                new_imports, new_funcs = extract_imports_and_functions(cleaned_response, assume_single_function=True)
                 if len(new_funcs) > 0:
                     import_statements.update(new_imports)
                     test_cases[test_name] = new_funcs[0]  # Assume one function per test case
                 else:
                     console.print(f"[yellow]Warning: No test functions extracted for {test_name}.[/yellow]")
             
-            # Make sure the functions to be tested are imported in the test file
-            function_imports = get_function_imports(path, function_locs, class_locs)
-            import_statements.update(function_imports)
-            
             # Create a single file with all the test cases
-            module_import_path = calculate_import_path_simple(path)
             combine_and_write_tests(test_cases, import_statements, Path(file_path), workspace.get_coder_output_dir(), module_import_path)
 
             workspace.set_status("CODE_GENERATED")

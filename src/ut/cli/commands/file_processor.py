@@ -23,6 +23,7 @@ from ut.test_writer import (
     extract_imports_and_functions,
     postprocess_test_code_enhanced,
 )
+from ut.test_checker import lint_test_case
 
 console = Console()
 
@@ -300,11 +301,23 @@ def process_project(
         cleaned_response = generate_test_from_prompt(prompt, test_name, test_dir)
                 
         if cleaned_response is None:
-            console.print(f"[yellow]Error: Unable to parse generated test for {test_name}.[/yellow]")
+            console.print(f"[yellow]Unable to parse generated test for {test_name}. Will retry on next iteration.[/yellow]")
             # breakpoint()
             continue
+        
+        # For convenience, we use the same function that is used to create the final test file here
+        cleaned_response_with_with_function_imports = combine_test_code(
+                function_imports,
+                [cleaned_response],
+                file_path.stem,
+                module_import_path
+            )
+        passed_lint, lint_message = lint_test_case(cleaned_response_with_with_function_imports)
+        if not passed_lint:
+            console.print(f"[yellow]Linting failed for {test_name}. Will retry on next iteration.[/yellow]")
+            continue
 
-        new_imports, new_funcs = extract_imports_and_functions(cleaned_response)
+        new_imports, new_funcs = extract_imports_and_functions(cleaned_response, assume_single_function=True)
         if len(new_funcs) > 0:
             import_statements.update(new_imports)
             test_cases[test_name] = new_funcs[0]  # Assume one function per test case
