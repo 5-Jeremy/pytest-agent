@@ -100,6 +100,30 @@ class WorkspaceManager:
             test_results = json.load(f)
         return test_results
 
+    # Update the file used to keep track of which planned tests have not yet passed
+    def update_remaining_tests(self, new_passed_tests: list) -> None:
+        # NOTE: I am using a json file right now even though there are no values, just in case I need to store
+        # more info later.
+        # If the remaining_tests.json file does not exist, we assume all tests are remaining and create it
+        remaining_tests_path = os.path.join(self.get_resume_dir(), "remaining_tests.json")
+        if os.path.exists(remaining_tests_path):
+            with open(remaining_tests_path, "r") as f:
+                past_remaining_tests = list(json.load(f).keys())
+        else:
+            past_remaining_tests = list(self.get_test_case_plans().keys())
+        updated_remaining_tests = set(past_remaining_tests) - {test for test in new_passed_tests if test in past_remaining_tests}
+        with open(remaining_tests_path, "w") as f:
+            json.dump({test: True for test in updated_remaining_tests}, f)
+
+    def get_remaining_tests(self) -> list:
+        remaining_tests_path = os.path.join(self.get_resume_dir(), "remaining_tests.json")
+        if os.path.exists(remaining_tests_path):
+            with open(remaining_tests_path, "r") as f:
+                remaining_tests = list(json.load(f).keys())
+        else:
+            raise FileNotFoundError("Remaining tests file not found.")
+        return remaining_tests
+
     # This function loads the raw planner response and then parses it so it can return 
     def get_test_case_plans(self) -> dict:
         plan_path = None

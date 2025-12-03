@@ -222,6 +222,7 @@ def generate(
         # Save the test results to a json file
         workspace.save_test_results(test_results_dict)
         print(test_results_dict)
+        workspace.update_remaining_tests([test for test in test_case_plans.keys() if test_results_dict.get(test, 'FAILED') == 'PASSED'])
         
         if len(test_results_dict) == 0:
             console.print(f"\n[bold red]No test results were parsed. Something went wrong.[/bold red]")
@@ -257,14 +258,17 @@ def generate(
         if workspace.get_status() == "CODE_TESTED":
             console.print(f"\n[bold blue]Begin test gen iteration {curr_attempts+1} of {max_attempts}[/bold blue]")
             # Determine which test plan items have been satisfied and which need to be retried
-            all_planned_tests = test_case_plans.keys()
-            actual_test_names = test_cases.keys()
-            # For any test that is in all_planned_tests but not in actual_test_names, we need to retry from scratch
+            remaining_tests = workspace.get_remaining_tests()
+            if len(remaining_tests) == 0:
+                console.print(f"\n[bold green]All planned tests have passed![/bold green]")
+                break
+            prev_iter_test_names = test_cases.keys()
+            # For any test that is in all_planned_tests but not in prev_iter_test_names, we need to retry from scratch
             # For any test that is in both, we check if it passed or failed. failed tests are retried with a 
             # modified prompt
-            retry_from_scratch = list(set(all_planned_tests) - set(actual_test_names))
-            passed_tests = [test_name for test_name in actual_test_names if test_results_dict.get(test_name, 'FAILED') == 'PASSED']
-            failed_tests = [test_name for test_name in actual_test_names if test_name not in passed_tests]
+            retry_from_scratch = list(set(remaining_tests) - set(prev_iter_test_names))
+            passed_tests = [test_name for test_name in prev_iter_test_names if test_results_dict.get(test_name, 'FAILED') == 'PASSED']
+            failed_tests = [test_name for test_name in prev_iter_test_names if test_name not in passed_tests]
             # First get the prompt for each test we will be retrying. For tests that we retry fron scratch, the
             # existing prompt can be reused. For failed tests, we need to modify the prompt to include
             # information about the failure
@@ -343,15 +347,11 @@ def generate(
         # Save the test results to a json file
         workspace.save_test_results(test_results_dict)
         print(test_results_dict)
+        workspace.update_remaining_tests([test for test in test_case_plans.keys() if test_results_dict.get(test, 'FAILED') == 'PASSED'])
         
         if len(test_results_dict) == 0:
             verbose_log(f"\n[bold red]No test results were parsed. Something went wrong.[/bold red]")
             breakpoint()
-            verbose_log(f"[dim]Stopping here.[/dim]")
-            return
-
-        if test_case_plans is None:
-            verbose_log("No test case plans could be extracted from the workspace; cannot determine which tests need to be retried.")
             verbose_log(f"[dim]Stopping here.[/dim]")
             return
 
