@@ -65,7 +65,24 @@ def extract_imports_and_functions(test_code: str, assume_single_function=False) 
     in_function = False
     decorator_lines = []
 
+    unwanted_items = [
+        "some_module",
+        "your_module",
+        "your_package",
+        "module_name",
+        "my_module",
+        "sample_module",
+        "<module_name>",
+        "path.to.module",
+        "# Replace",
+        "from abc import"
+    ]
+
     for line in lines:
+        # Remove lines that are likely to mess things up later
+        if any(item in line for item in unwanted_items):
+            continue
+
         # Skip malformed lines and comments
         if line.strip() == ")" or line.strip().startswith("#") and not in_function:
             continue
@@ -248,9 +265,6 @@ def combine_test_code(
             content_parts.append("")
         content_parts.append(func)
 
-    if any(['your_module' in part for part in content_parts]):
-        breakpoint()
-
     # Add final newline
     content_parts.append("")
 
@@ -292,8 +306,8 @@ def refine_local_imports(
         if ")" in imp and "import" not in imp:
             continue
 
-        # Skip TODO comments (but allow general comments)
-        if "TODO:" in imp:
+        # Skip imports with comments since this usually indicates a placeholder
+        if "TODO:" in imp or "#" in imp:
             continue
 
         # Replace placeholder modules with actual module path

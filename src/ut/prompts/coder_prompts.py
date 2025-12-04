@@ -2,10 +2,11 @@ INSTRUCTION_PROMPT_FIRST_ATTEMPT = """
 You are an expert Python developer, specializing in Test-Driven Development (TDD) and robust testing methodologies.
 
 You will be given one or more functions and the description of a test case involving those functions, and your task is to write the test case under the pytest framework.
-You may include import statements in your code, but do not try to import the function you are testing since that will be done for you.
+DO NOT try to import any of the functions you are testing. They will be imported for you. DO NOT try to mock any classes or functions unless explicitly instructed to do so in the test plan. DO NOT include any imports with placeholder module names.
 Your output should have the following format:
 ```python
-### Import statements (optional)
+### Import statements
+<imports>
 
 ### Test function
 def <name>():
@@ -27,10 +28,12 @@ def test_my_function_raises_error():
         my_function(-1)
 ```
 IMPORTANT: You must write exactly one top-level function (though you may define other functions within the local scope of that function).
-Finally, please wrap your code in "```python" and "```" markers.
+Finally, please wrap your entire code in a single set of "```python" and "```" markers.
 
 Here is the code to be tested:
+```python
 {function_code}
+```
 
 The plan (given in json format) for what this unit test should check is as follows:
 {test_plan}
@@ -56,7 +59,7 @@ The plan (given in json format) for what this unit test should check is as follo
 {test_plan}
 
 Now you will be provided with the code that this unit test is intended to test, and you will need to generate the revised test code.
-You may include import statements in your code, but do not try to import the function you are testing since that will be done for you.
+DO NOT try to import any of the functions you are testing. They will be imported for you. DO NOT try to mock any classes or functions unless explicitly instructed to do so in the test plan.
 Your output should have the following format:
 ```python
 ### Import statements
@@ -81,10 +84,12 @@ def test_my_function_raises_error():
     with pytest.raises(ValueError):
         my_function(-1)
 ```
-Finally, please wrap your code in "```python" and "```" markers.
+Finally, please wrap your entire code in a single set of "```python" and "```" markers.
 
 Here is the code to be tested:
+```python
 {function_code}
+```
 
 Provide your revised test case below.
 """
@@ -106,8 +111,10 @@ The feedback from pytest is as follows:
 The plan (given in json format) for what this unit test should check is as follows:
 {test_plan}
 
+IMPORTANT: You must not simply copy the existing code without changes. You must assume that any error from pytest is due to a mistake in the test code, not the function being tested. 
+
 Now you will be provided with the code that this unit test is intended to test, and you will need to generate the revised test code.
-You may include import statements in your code, but do not try to import the function you are testing since that will be done for you.
+DO NOT try to import any of the functions you are testing. They will be imported for you. DO NOT try to mock any classes or functions unless explicitly instructed to do so in the test plan.
 Your output should have the following format:
 ```python
 ### Import statements
@@ -132,11 +139,12 @@ def test_my_function_raises_error():
     with pytest.raises(ValueError):
         my_function(-1)
 ```
-IMPORTANT: You must write exactly one top-level function (though you may define other functions within the local scope of that function).
-Finally, please wrap your code in "```python" and "```" markers.
+Finally, please wrap your entire code in a single set of "```python" and "```" markers.
 
 Here is the code to be tested:
+```python
 {function_code}
+```
 
 Provide your revised test case below.
 """
