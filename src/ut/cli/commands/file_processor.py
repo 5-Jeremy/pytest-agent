@@ -303,7 +303,8 @@ def process_project(
 
         # Previously this was all one big for loop, but to batch the requests the loop had to be split
         # cleaned_response = generate_test_from_prompt(prompt, test_name, test_dir)
-                
+    
+    lint_messages = {}
     for test_name, response in responses.items():
         cleaned_response = clean_coder_response(response, test_name, test_dir)
 
@@ -321,6 +322,7 @@ def process_project(
             )
         passed_lint, lint_message = lint_test_case(cleaned_response_with_with_function_imports, workspace.get_resume_dir())
         if not passed_lint:
+            lint_messages[test_name] = lint_message
             console.print(f"[yellow]Linting failed for {test_name}. Will retry on next iteration.[/yellow]")
             continue
 
@@ -330,12 +332,9 @@ def process_project(
             test_cases[test_name] = new_funcs[0]  # Assume one function per test case
         else:
             console.print(f"[yellow]Warning: No test functions extracted for {test_name}.[/yellow]")
-        # print("Imports:\n")
-        # for imp in new_imports:
-        #     print(f"  - {imp}")
-        # print("Functions:\n")
-        # for func in new_funcs:
-        #     print(func)
+
+    # Save lint messages for later
+    workspace.save_linter_messages(lint_messages)
     
     # Make sure the functions to be tested are imported in the test file
     import_statements.update(function_imports)

@@ -1,4 +1,5 @@
 import os, pickle, json
+from typing import Tuple
 from src.ut.llm_client import parse_test_case_plan_json
 
 class WorkspaceManager:
@@ -61,6 +62,36 @@ class WorkspaceManager:
             return -1
         return max_num
     
+    # TODO: Eventually this data structure should fully replace lint_messages.json, test_results.json, 
+    # test_feedback.json, and maybe remaining_tests.json
+    def save_test_context(self, test_context: dict) -> None:
+        with open(os.path.join(self.get_coder_output_dir(), "test_context.json"), "w") as f:
+            json.dump(test_context, f)
+
+    def load_test_context(self) -> dict:
+        # We may need to look at the previous coder iteration for test results
+        if os.path.exists(os.path.join(self.get_coder_output_dir(), "test_context.json")):
+            target_dir = self.get_coder_output_dir()
+        elif self.coder_iteration > 0 and os.path.exists(os.path.join(self.get_path("coder", f"iteration_{self.coder_iteration - 1}"), "test_context.json")):
+            target_dir = self.get_path("coder", f"iteration_{self.coder_iteration - 1}")
+        else:
+            raise FileNotFoundError("Test context file not found in current or previous coder iteration directories.")
+        with open(os.path.join(target_dir, "test_context.json"), "r") as f:
+            test_context = json.load(f)
+        return test_context
+
+    def save_linter_messages(self, lint_messages: dict) -> None:
+        with open(os.path.join(self.get_coder_output_dir(), "lint_messages.json"), "w") as f:
+            json.dump(lint_messages, f)
+    
+    def load_linter_messages(self) -> dict:
+        lint_messages_path = os.path.join(self.get_coder_output_dir(), "lint_messages.json")
+        if not os.path.exists(lint_messages_path):
+            return {}
+        with open(lint_messages_path, "r") as f:
+            lint_messages = json.load(f)
+        return lint_messages
+
     def load_all_test_results(self) -> dict:
         all_test_results = {}
         last_completed_iteration = self.get_last_completed_coder_iteration()
@@ -83,11 +114,13 @@ class WorkspaceManager:
             func_and_class_info = pickle.load(f)
         return func_and_class_info
     
-    def save_test_results(self, test_results: dict) -> None:
+    def save_test_results(self, test_results: dict, test_feedback: dict) -> None:
         with open(os.path.join(self.get_coder_output_dir(), "test_results.json"), "w") as f:
             json.dump(test_results, f)
+        with open(os.path.join(self.get_coder_output_dir(), "test_feedback.json"), "w") as f:
+            json.dump(test_feedback, f)
     
-    def load_test_results(self) -> dict:
+    def load_test_results(self) -> Tuple[dict, dict]:
         # We may need to look at the previous coder iteration for test results
         if os.path.exists(os.path.join(self.get_coder_output_dir(), "test_results.json")):
             target_dir = self.get_coder_output_dir()
@@ -98,7 +131,10 @@ class WorkspaceManager:
             raise FileNotFoundError("Test results file not found in current or previous coder iteration directories.")
         with open(os.path.join(target_dir, "test_results.json"), "r") as f:
             test_results = json.load(f)
-        return test_results
+        with open(os.path.join(target_dir, "test_feedback.json"), "r") as f:
+            test_feedback = json.load(f)
+        return test_results, test_feedback
+        return test_results, test_feedback
 
     # Update the file used to keep track of which planned tests have not yet passed
     def update_remaining_tests(self, new_passed_tests: list) -> None:

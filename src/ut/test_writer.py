@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 
 from ut.cli.commands.constants import DEF_TEST_STRING
-from ut.llm_client import generate_test_case
 
 def write_test_file(function_name, test_code, output_dir):
     """Write the generated test code to a file.
@@ -71,8 +70,8 @@ def extract_imports_and_functions(test_code: str, assume_single_function=False) 
         if line.strip() == ")" or line.strip().startswith("#") and not in_function:
             continue
 
-        # Check if it's an import statement
-        if line.strip().startswith(("import ", "from ")) and not in_function:
+        # Check if it's an import statement; imports inside of a function should still be captured
+        if line.strip().startswith(("import ", "from ")):
             # Clean up malformed imports
             if "from test_" not in line and "TODO:" not in line:
                 imports.add(line.strip())
@@ -224,7 +223,11 @@ def combine_test_code(
         third_party_imports.insert(0, "import pytest")
 
     if third_party_imports:
-        content_parts.extend(third_party_imports)
+        # Need to refine these imports as well because placeholder modules may be present
+        refined_imports = refine_local_imports(
+            third_party_imports, module_import_path, module_name
+        )
+        content_parts.extend(refined_imports)
         content_parts.append("")
 
     if local_imports:
@@ -244,6 +247,9 @@ def combine_test_code(
             content_parts.append("")  # Two blank lines between functions
             content_parts.append("")
         content_parts.append(func)
+
+    if any(['your_module' in part for part in content_parts]):
+        breakpoint()
 
     # Add final newline
     content_parts.append("")
@@ -286,8 +292,8 @@ def refine_local_imports(
         if ")" in imp and "import" not in imp:
             continue
 
-        # Skip TODO comments
-        if "TODO:" in imp or "#" in imp:
+        # Skip TODO comments (but allow general comments)
+        if "TODO:" in imp:
             continue
 
         # Replace placeholder modules with actual module path
@@ -325,9 +331,11 @@ def refine_local_imports(
                 refined.add(imp)
 
     # If no specific imports were found, add a generic one
-    if not any(module_import_path in imp for imp in refined):
-        # Try to import the specific function being tested
-        refined.add(f"from {module_import_path} import *")
+    # NOTE: This is commented out because such an import causes linter error F403; furthermore I don't think
+        # this kind of import will ever be needed
+    # if not any(module_import_path in imp for imp in refined):
+    #     # Try to import the specific function being tested
+    #     refined.add(f"from {module_import_path} import *")
 
     return sorted(list(refined))
 

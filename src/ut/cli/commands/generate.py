@@ -10,7 +10,7 @@ from ut.cli.commands.file_processor import process_file, process_project, combin
 from ut.cli.commands.helper import clean_temp_files, verbose_log
 from ut.llm_client import is_vllm_running, parse_test_case_plan_old, parse_test_case_plan_json, generate_test_cases_batched
 from ut.parser import get_context_for_test_gen, calculate_import_path_simple, get_function_imports
-from ut.prompts.prompt_builder import generate_coder_prompt
+from ut.prompts.prompt_builder import generate_coder_prompt, generate_coder_revision_prompt
 from ut.test_writer import extract_imports_and_functions, combine_test_code, clean_coder_response
 from ut.test_checker import lint_test_case
 from ut.test_runner import DockerTestRunner
@@ -215,34 +215,53 @@ def generate(
         test_results_string = test_runner.run_pytest(test_filepath)
         verbose_log("Raw pytest output:\n" + test_results_string)
         console.print("Raw pytest output:\n" + test_results_string)
-        test_results_dict = parse_pytest_output(test_results_string)
-        return test_results_dict
+        test_results_dict, test_feedback = parse_pytest_output(test_results_string)
+        return test_results_dict, test_feedback
 
     ### Run the generated tests inside a Docker container (This is only for the first iteration)
     if workspace.get_status() == "CODE_GENERATED" and workspace.coder_iteration == 0:
         test_filepath = os.path.join(output_base, f"test_{path.stem}.py")
-        console.print(f"\n[bold blue]Running generated tests in Docker container '{image_name}'[/bold blue]")
-        test_results_dict = run_tests(test_filepath)
-        # Save the test results to a json file
-        workspace.save_test_results(test_results_dict)
-        print(test_results_dict)
-        workspace.update_remaining_tests([test for test in test_case_plans.keys() if test_results_dict.get(test, 'FAILED') == 'PASSED'])
-        
-        if len(test_results_dict) == 0:
-            console.print(f"\n[bold red]No test results were parsed. Something went wrong.[/bold red]")
-            breakpoint()
-            console.print(f"[dim]Stopping here.[/dim]")
-            return
+        if os.path.exists(test_filepath):
+            console.print(f"\n[bold blue]Running generated tests in Docker container '{image_name}'[/bold blue]")
+            test_results_dict, test_feedback = run_tests(test_filepath)
+            # Save the test results to a json file
+            workspace.save_test_results(test_results_dict, test_feedback)
+            print(test_results_dict)
+            workspace.update_remaining_tests([test for test in test_case_plans.keys() if test_results_dict.get(test, 'FAILED') == 'PASSED'])
+            
+            if len(test_results_dict) == 0:
+                console.print(f"\n[bold red]No test results were parsed. Something went wrong.[/bold red]")
+                breakpoint()
+                console.print(f"[dim]Stopping here.[/dim]")
+                return
 
-        if test_case_plans is None:
-            verbose_log("No test case plans could be extracted from the workspace; cannot determine which tests need to be retried.")
-            console.print(f"[dim]Stopping here.[/dim]")
-            return
+            if test_case_plans is None:
+                verbose_log("No test case plans could be extracted from the workspace; cannot determine which tests need to be retried.")
+                console.print(f"[dim]Stopping here.[/dim]")
+                return
+        else:
+            console.print(f"\n[bold red]Test file {test_filepath} not found in coder output directory. This means no valid tests were generated.[/bold red]")
+            console.print(f"[dim]Skipping testing.[/dim]")
         
         workspace.set_status("CODE_TESTED")
         workspace.next_coder_iteration()
     else:
-        test_results_dict = workspace.load_test_results()
+        test_results_dict, test_feedback = workspace.load_test_results()
+
+    # From here on, the coder prompts may require additional context such as previously generated code and 
+    # failure feedback. Here we set up a data structure to hold that info
+    test_context = {}
+    linter_messages = workspace.load_linter_messages()
+    for test_name in test_case_plans.keys():
+        # TODO: Consider adding the "function_code_context" to this
+        test_context[test_name] = {
+            "previous_code": test_cases.get(test_name, None),
+            "test_plan": test_case_plans[test_name],
+            "linter_message": linter_messages.get(test_name, None),
+            "test_result": test_results_dict.get(test_name, None),
+            "test_feedback": test_feedback.get(test_name, None)
+        }
+    workspace.save_test_context(test_context)
 
     ### Enter a loop for refining the tests until all planned tests either pass or have been reached the max
         # number of attempts
@@ -261,16 +280,22 @@ def generate(
         # If the status is "CODE_TESTED", that means it is time to refine the tests
         if workspace.get_status() == "CODE_TESTED":
             console.print(f"\n[bold blue]Begin test gen iteration {curr_attempts+1} of {max_attempts}[/bold blue]")
+            test_context = workspace.load_test_context()
+            
             # Determine which test plan items have been satisfied and which need to be retried
             remaining_tests = workspace.get_remaining_tests()
             if len(remaining_tests) == 0:
                 console.print(f"\n[bold green]All planned tests have passed![/bold green]")
                 break
             prev_iter_test_names = test_cases.keys()
-            # For any test that is in all_planned_tests but not in prev_iter_test_names, we need to retry from scratch
+            # For any test that is in all_planned_tests but not in prev_iter_test_names, we either need 
+            # to retry from scratch or apply the linter feedback to revise the test
             # For any test that is in both, we check if it passed or failed. failed tests are retried with a 
             # modified prompt
-            retry_from_scratch = list(set(remaining_tests) - set(prev_iter_test_names))
+            untested = list(set(remaining_tests) - set(prev_iter_test_names))
+            lint_messages = workspace.load_linter_messages()
+            revise_with_linter_feedback = [test_name for test_name in lint_messages]
+            retry_from_scratch = [test_name for test_name in untested if test_name not in lint_messages]
             passed_tests = [test_name for test_name in prev_iter_test_names if test_results_dict.get(test_name, 'FAILED') == 'PASSED']
             failed_tests = [test_name for test_name in prev_iter_test_names if test_name not in passed_tests]
             # First get the prompt for each test we will be retrying. For tests that we retry fron scratch, the
@@ -289,43 +314,66 @@ def generate(
             function_imports = get_function_imports(path, function_locs, class_locs)
             import_statements.update(function_imports)
             module_import_path = calculate_import_path_simple(path)
-            if len(retry_from_scratch) > 0:
-                for test_name in retry_from_scratch:
-                    verbose_log(f"\n  → Will re-use code generation prompt for test: [cyan]{test_name}[/cyan]")
-                    # Re-create the prompt using the previously generated plan and the saved function and class dicts
-                    test_plan = test_case_plans[test_name]
+            for test_name in retry_from_scratch:
+                verbose_log(f"\n  → Will re-use code generation prompt for test: [cyan]{test_name}[/cyan]")
+                # Re-create the prompt using the previously generated plan and the saved function and class dicts
+                test_plan = test_case_plans[test_name]
 
-                    function_code_context = get_context_for_test_gen(
-                        test_plan, function_dict, class_dict
+                function_code_context = get_context_for_test_gen(
+                    test_plan, function_dict, class_dict
+                )
+                prompt = generate_coder_prompt(
+                    function_code_context,
+                    f"{test_name}: {test_plan}"
+                )
+                prompts[test_name] = prompt
+            
+            for test_name in revise_with_linter_feedback:
+                verbose_log(f"\n  → Generating refined prompt for lint-failed test: [cyan]{test_name}[/cyan]")
+                # Get the original plan and the test result details
+                test_plan = test_context[test_name]['test_plan']
+                function_code_context = get_context_for_test_gen(
+                    test_plan, function_dict, class_dict
+                )
+                # Create a refined prompt that includes information about the failure
+                prompt = generate_coder_revision_prompt(
+                    function_code_context,
+                    f"{test_name}: {test_context[test_name]['test_plan']}",
+                    prev_attempt_code=test_context[test_name]["previous_code"],
+                    type_of_revision="lint",
+                    feedback_message=test_context[test_name]["linter_message"]
+                )
+                prompts[test_name] = prompt
+
+            for test_name in failed_tests:
+                verbose_log(f"\n  → Generating refined prompt for failed test: [cyan]{test_name}[/cyan]")
+                # Get the original plan and the test result details
+                test_plan = test_context[test_name]['test_plan']
+                function_code_context = get_context_for_test_gen(
+                    test_plan, function_dict, class_dict
+                )
+                if test_name in test_feedback.keys():
+                    # Create a refined prompt that includes information about the failure
+                    prompt = generate_coder_revision_prompt(
+                        function_code_context,
+                        f"{test_name}: {test_context[test_name]['test_plan']}",
+                        prev_attempt_code=test_context[test_name]["previous_code"],
+                        type_of_revision="test_fail",
+                        feedback_message=test_context[test_name]["test_feedback"]
                     )
+                else:
                     prompt = generate_coder_prompt(
                         function_code_context,
-                        f"{test_name}: {test_plan}"
+                        f"{test_name}: {test_context[test_name]['test_plan']}"
                     )
-                    prompts[test_name] = prompt
-            if len(failed_tests) > 0:
-                for test_name in failed_tests:
-                    verbose_log(f"\n  → Generating refined prompt for failed test: [cyan]{test_name}[/cyan]")
-                    # Get the original plan and the test result details
-                    test_plan = test_case_plans[test_name]
-                    # Note: currently the only detail we have is whether the test passed or failed
-                    test_result_details = test_results_dict.get(test_name, None)
-                    function_code_context = get_context_for_test_gen(
-                        test_plan, function_dict, class_dict
-                    )
-                    # Create a refined prompt that includes information about the failure
-                    # prompt = generate_coder_prompt(
-                    #     function_code_context,
-                    #     f"{test_name}: {test_plan}",
-                    #     previous_test_result=test_result_details
-                    # )
-                    prompts[test_name] = prompt
+                    
+                prompts[test_name] = prompt
             
             # Batched generation
             verbose_log(f"\n  → Generating test codes for {len(prompts)} test(s)...")
             responses = asyncio.run(generate_test_cases_batched(prompts))
 
-            # for test_name, test_plan in test_case_plans.items():
+            lint_messages = {}
             for test_name, response in responses.items():
                 cleaned_response = clean_coder_response(response, test_name, workspace.get_coder_output_dir())
                         
@@ -346,6 +394,7 @@ def generate(
                 if not passed_lint:
                     console.print(f"[yellow]Linting failed for {test_name}. Will retry on next iteration.[/yellow]")
                     continue
+                lint_messages[test_name] = lint_message
 
                 new_imports, new_funcs = extract_imports_and_functions(cleaned_response, assume_single_function=True)
                 if len(new_funcs) > 0:
@@ -357,16 +406,29 @@ def generate(
             # Create a single file with all the test cases
             combine_and_write_tests(test_cases, import_statements, Path(file_path), workspace.get_coder_output_dir(), module_import_path)
 
+            workspace.save_linter_messages(lint_messages)
             workspace.set_status("CODE_GENERATED")
 
         test_filepath = os.path.join(workspace.get_coder_output_dir(), f"test_{path.stem}.py")
         console.print(f"\n[bold blue]Running generated tests in Docker container '{image_name}'[/bold blue]")
-        test_results_dict = run_tests(test_filepath)
+        test_results_dict, test_feedback = run_tests(test_filepath)
         # Save the test results to a json file
-        workspace.save_test_results(test_results_dict)
+        workspace.save_test_results(test_results_dict, test_feedback)
         print(test_results_dict)
         workspace.update_remaining_tests([test for test in test_case_plans.keys() if test_results_dict.get(test, 'FAILED') == 'PASSED'])
         
+        test_context = {}
+        linter_messages = workspace.load_linter_messages()
+        for test_name in test_case_plans.keys():
+            test_context[test_name] = {
+                "previous_code": test_cases.get(test_name, None),
+                "test_plan": test_case_plans[test_name],
+                "linter_message": linter_messages.get(test_name, None),
+                "test_result": test_results_dict.get(test_name, None),
+                "test_feedback": test_feedback.get(test_name, None)
+            }
+        workspace.save_test_context(test_context)
+
         if len(test_results_dict) == 0:
             verbose_log(f"\n[bold red]No test results were parsed. Something went wrong.[/bold red]")
             breakpoint()

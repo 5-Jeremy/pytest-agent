@@ -78,7 +78,7 @@ async def send_one(client: httpx.AsyncClient, server_url: str, prompt: str) -> s
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.0,
-            "max_tokens": 256,
+            "max_tokens": 1024,
         }
         resp = await client.post(url, json=payload, timeout=TIMEOUT_SECONDS)
         resp.raise_for_status()

@@ -1,5 +1,6 @@
 """Automated Unit Test Generation CLI with AI."""
 from ut.constants import FILE_PATH_PROMPT
+from ut.prompts.coder_prompts import INSTRUCTION_PROMPT_FIRST_ATTEMPT, INSTRUCTION_PROMPT_AFTER_LINT_FAIL, INSTRUCTION_PROMPT_AFTER_TEST_FAIL
 
 def _load_prompt(prompt_file):
     try:
@@ -19,14 +20,33 @@ def generate_coder_prompt(
     function_code: str,
     test_plan: str,
 ) -> str:
-    coder_instructions_prompt = _load_prompt("coder_instructions_prompt.txt")
-    prompt = coder_instructions_prompt
-    prompt += "\nFunctions to be tested:\n"
-    prompt += function_code + "\n"
-    # prompt += "Recommended imports:\n"
-    # prompt += imports_code + "\n"
-    prompt += "Testing Plan:\n"
-    prompt += test_plan + "\n"
+    prompt = INSTRUCTION_PROMPT_FIRST_ATTEMPT.format(
+        function_code=function_code,
+        test_plan=test_plan,
+    )
+    return prompt
+
+def generate_coder_revision_prompt(
+    function_code: str,
+    test_plan: str,
+    prev_attempt_code: str,
+    type_of_revision: str,
+    feedback_message: str,
+) -> str:
+    if type_of_revision == "lint":
+        prompt = INSTRUCTION_PROMPT_AFTER_LINT_FAIL.format(
+            test_code=prev_attempt_code,
+            lint_message=feedback_message,
+            test_plan=test_plan,
+            function_code=function_code,)
+    elif type_of_revision == "test_fail":
+        prompt = INSTRUCTION_PROMPT_AFTER_TEST_FAIL.format(
+            test_code=prev_attempt_code,
+            pytest_message=feedback_message,
+            test_plan=test_plan,
+            function_code=function_code,)
+    else:
+        raise ValueError(f"Unknown type of revision: {type_of_revision}")
     return prompt
 
 ### Old prompts from the original repository
