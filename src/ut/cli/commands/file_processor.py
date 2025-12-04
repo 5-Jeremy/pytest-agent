@@ -319,7 +319,7 @@ def process_project(
                 file_path.stem,
                 module_import_path
             )
-        passed_lint, lint_message = lint_test_case(cleaned_response_with_with_function_imports)
+        passed_lint, lint_message = lint_test_case(cleaned_response_with_with_function_imports, workspace.get_resume_dir())
         if not passed_lint:
             console.print(f"[yellow]Linting failed for {test_name}. Will retry on next iteration.[/yellow]")
             continue
