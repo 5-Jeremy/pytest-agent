@@ -1,4 +1,5 @@
 """Automated Unit Test Generation CLI with AI."""
+import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -7,10 +8,10 @@ from rich.console import Console
 
 from ut.cli.commands.file_processor import process_file, process_project, combine_and_write_tests
 from ut.cli.commands.helper import clean_temp_files, verbose_log
-from ut.llm_client import is_vllm_running, parse_test_case_plan_old, parse_test_case_plan_json
+from ut.llm_client import is_vllm_running, parse_test_case_plan_old, parse_test_case_plan_json, generate_test_cases_batched
 from ut.parser import get_context_for_test_gen, calculate_import_path_simple, get_function_imports
 from ut.prompts.prompt_builder import generate_coder_prompt
-from ut.test_writer import generate_test_from_prompt, extract_imports_and_functions, combine_test_code
+from ut.test_writer import extract_imports_and_functions, combine_test_code, clean_coder_response
 from ut.test_checker import lint_test_case
 from ut.test_runner import DockerTestRunner
 from ut.results_parser import parse_pytest_output
@@ -320,11 +321,13 @@ def generate(
                     # )
                     prompts[test_name] = prompt
             
-            # for test_name, test_plan in test_case_plans.items():
-            for test_name in retry_from_scratch + failed_tests:
-                verbose_log(f"\n  → Generating test code for: [cyan]{test_name}[/cyan]")
+            # Batched generation
+            verbose_log(f"\n  → Generating test codes for {len(prompts)} test(s)...")
+            responses = asyncio.run(generate_test_cases_batched(prompts))
 
-                cleaned_response = generate_test_from_prompt(prompts[test_name], test_name, workspace.get_coder_output_dir())
+            # for test_name, test_plan in test_case_plans.items():
+            for test_name, response in responses.items():
+                cleaned_response = clean_coder_response(response, test_name, workspace.get_coder_output_dir())
                         
                 if cleaned_response is None:
                     console.print(f"[yellow]Error: Unable to parse generated test for {test_name}.[/yellow]")
@@ -338,6 +341,7 @@ def generate(
                         path.stem, # This is the module name
                         module_import_path
                     )
+                
                 passed_lint, lint_message = lint_test_case(cleaned_response_with_with_function_imports)
                 if not passed_lint:
                     console.print(f"[yellow]Linting failed for {test_name}. Will retry on next iteration.[/yellow]")

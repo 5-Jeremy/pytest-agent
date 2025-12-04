@@ -9,6 +9,8 @@ from ut.cli.commands.helper import verbose_log
 import json
 from typing import Iterator, Tuple, Any
 
+import math, asyncio, httpx
+
 load_dotenv()
 
 # Function used to do inference with the planner model
@@ -57,6 +59,72 @@ def is_vllm_running(host="http://127.0.0.1", port=8000):
         return False
     except requests.Timeout:
         return False
+
+SERVERS = [
+    "http://localhost:8000",
+    "http://localhost:8001",
+    "http://localhost:8002",
+    "http://localhost:8003",
+]
+MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct"
+MAX_CONCURRENT_PER_SERVER = 8
+TIMEOUT_SECONDS = 60.0
+
+async def send_one(client: httpx.AsyncClient, server_url: str, prompt: str) -> str:
+        url = f"{server_url}/v1/chat/completions"
+        payload = {
+            "model": MODEL,
+            "messages": [
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 256,
+        }
+        resp = await client.post(url, json=payload, timeout=TIMEOUT_SECONDS)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+async def generate_test_cases_batched(prompts: dict) -> dict:
+    # TODO: These are hardcoded for now, make them configurable later
+    num_servers = 4
+    n = len(prompts)
+    chunk_size = math.ceil(n / num_servers)
+    results = [None] * n
+
+    prompts_batch = list(prompts.values())
+
+    async with httpx.AsyncClient() as client:
+        async def run_on_one_server(server_idx: int, start: int, end: int):
+            sem = asyncio.Semaphore(MAX_CONCURRENT_PER_SERVER)
+            tasks = []
+            for i in range(start, end):
+                async def worker(i=i):
+                    async with sem:
+                        try:
+                            text = await send_one(client, SERVERS[server_idx], prompts_batch[i])
+                        except Exception as e:
+                            text = f"ERROR: {e!r}"
+                        results[i] = text
+                tasks.append(asyncio.create_task(worker()))
+            await asyncio.gather(*tasks)
+
+        all_tasks = []
+        for server_idx in range(num_servers):
+            start = server_idx * chunk_size
+            end = min(start + chunk_size, n)
+            if start >= n:
+                break
+            all_tasks.append(run_on_one_server(server_idx, start, end))
+
+        await asyncio.gather(*all_tasks)
+
+    # Map back to test names
+    results_dict = {}
+    for test_name, result in zip(prompts.keys(), results):
+        results_dict[test_name] = result
+
+    return results_dict
 
 # Function used to do inference with the test case generator model (hosted locally using vllm)
 def generate_test_case(prompt: str, port: int = 8000, model: str = "Qwen/Qwen2.5-Coder-32B-Instruct") -> str:

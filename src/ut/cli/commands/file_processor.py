@@ -2,14 +2,14 @@
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
-import os, pickle
+import os, asyncio
 
 from rich.console import Console
 
 from ut.cli.commands.constants import DEF_TEST_STRING
 from ut.cli.commands.helper import verbose_log, verbose_print
 from ut.workspace import WorkspaceManager
-from ut.llm_client import generate_test_plan, parse_test_case_plan_old, parse_test_case_plan_json
+from ut.llm_client import generate_test_plan, parse_test_case_plan_old, parse_test_case_plan_json, generate_test_cases_batched
 from ut.parser import calculate_import_path_simple, source_code_analysis, extract_code, get_function_imports, get_context_for_test_gen
 from ut.prompts.prompt_builder import (
     generate_class_method_prompt,
@@ -18,7 +18,7 @@ from ut.prompts.prompt_builder import (
     generate_coder_prompt,
 )
 from ut.test_writer import (
-    generate_test_from_prompt,
+    clean_coder_response,
     combine_test_code,
     extract_imports_and_functions,
     postprocess_test_code_enhanced,
@@ -286,7 +286,6 @@ def process_project(
     test_cases = {}
     import_statements = set()
     for test_name, test_plan in test_case_plans.items():
-        verbose_log(f"\n  → Generating test code for: [cyan]{test_name}[/cyan]")
 
         function_code_context = get_context_for_test_gen(
             test_plan, function_dict, class_dict
@@ -298,8 +297,16 @@ def process_project(
         )
         prompts[test_name] = prompt
 
-        cleaned_response = generate_test_from_prompt(prompt, test_name, test_dir)
+    # Batched generation
+    verbose_log(f"\n  → Generating test codes for {len(prompts)} test(s)...")
+    responses = asyncio.run(generate_test_cases_batched(prompts))
+
+        # Previously this was all one big for loop, but to batch the requests the loop had to be split
+        # cleaned_response = generate_test_from_prompt(prompt, test_name, test_dir)
                 
+    for test_name, response in responses.items():
+        cleaned_response = clean_coder_response(response, test_name, test_dir)
+
         if cleaned_response is None:
             console.print(f"[yellow]Unable to parse generated test for {test_name}. Will retry on next iteration.[/yellow]")
             # breakpoint()

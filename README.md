@@ -34,10 +34,15 @@ Unittest AI Agent is a Python tool that automatically generates comprehensive un
    - If using a volume mount:
 
 4.  **Start the VLLM server**
+
+Simple sequential version:
 ```sh
 vllm serve Qwen/Qwen2.5-Coder-32B-Instruct
 ```
-
+Fully parallel version utilizing multiple GPUs (hardcoded to use Qwen/Qwen2.5-Coder-32B-Instruct):
+```sh
+bash start_vllm_servers.sh <num_GPUS>
+```
 ## Generating tests
 
 **Run the test generator:**

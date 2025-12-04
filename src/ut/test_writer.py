@@ -30,8 +30,7 @@ def write_test_file(function_name, test_code, output_dir):
 
 
 # The generated tests will be placed in a "raw_outputs" subdirectory of output_dir
-def generate_test_from_prompt(prompt, test_name, output_dir) -> str:
-    raw_response = generate_test_case(prompt)
+def clean_coder_response(raw_response, test_name, output_dir) -> str:
     log_dir = Path(output_dir)
     log_file_TC = log_dir / "raw_outputs" / f"{test_name}.txt"
     os.makedirs(log_file_TC.parent, exist_ok=True)
