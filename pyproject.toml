@@ -78,6 +78,7 @@ lint.select = [
 lint.ignore = [
     "F401", # unused import (not a runtime failure)
     "F841", # unused variable
+    "F811", # redefinition of unused name
 ]
 
 [build-system]
