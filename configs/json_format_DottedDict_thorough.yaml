@@ -1,0 +1,10 @@
+planner:
+  prompt_file: planner_instructions_prompt_json_thorough.txt
+  plan_format: json
+coder:
+  prompt_file: coder_instructions_prompt.txt
+  max_attempts: 3
+project:
+  docker_image_name: unittest:DottedDict
+  test_dir_in_container: /code/DottedDict/tests
+  include_init_files: false
