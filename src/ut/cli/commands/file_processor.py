@@ -208,6 +208,8 @@ def process_project(
     """
     verbose_log(f"Preparing planner prompt for {file_path.name}")
 
+    if conf['project'].get('extra_ignore_list', None):
+        ignore_list.extend(conf['project']['extra_ignore_list'])
     if conf['project'].get('include_init_files', False) and '__init__.py' in ignore_list:
         ignore_list.remove('__init__.py')
     function_locs, class_locs, files_for_planner, function_dict, class_dict, func_and_class_info = extract_code(file_path, ignore_list)
