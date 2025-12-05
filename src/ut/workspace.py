@@ -94,6 +94,8 @@ class WorkspaceManager:
             pickle.dump(all_imports_and_funcs, f)
 
     def load_cur_imports_and_functions(self) -> dict:
+        if not os.path.exists(os.path.join(self.get_coder_output_dir(), "all_imports_and_funcs.pkl")):
+            return {"imports": set(), "functions": {}}
         with open(os.path.join(self.get_coder_output_dir(), "all_imports_and_funcs.pkl"), "rb") as f:
             all_imports_and_funcs = pickle.load(f)
         return all_imports_and_funcs
