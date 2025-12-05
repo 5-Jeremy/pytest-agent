@@ -28,10 +28,19 @@ def parse_pytest_output(pytest_output: str) -> Dict[str, str]:
     # Check for an error preventing the tests from running; if this happens, nothing can be extracted
     # on a per-test basis (the error that caused this could be used as feedback but currently is not)
     if "__________________ ERROR collecting" in pytest_output:
-        return results, feedback
+        # Check for a specific line which throws the error:
+        for line in pytest_output.split('\n'):
+            if line.startswith("E     File"):
+                feedback = line.split("line")[-1].strip()
+        return None, feedback
 
-    pass_fail_part = pytest_output.split('=================================== FAILURES ===================================')[0]
-    error_summary_part = pytest_output.split('=================================== FAILURES ===================================')[1].split('=============================== warnings summary ===============================')[0]
+    # If all tests passed, we can avoid this splitting. An easy way to check is to look for "FAIL"
+    if "FAIL" not in pytest_output:
+        pass_fail_part = pytest_output
+        error_summary_part = ""
+    else:
+        pass_fail_part = pytest_output.split('=================================== FAILURES ===================================')[0]
+        error_summary_part = pytest_output.split('=================================== FAILURES ===================================')[1].split('=============================== warnings summary ===============================')[0]
 
     # Pattern to match test result lines
     # Format: path/to/file.py::test_function_name PASSED/FAILED [percentage]

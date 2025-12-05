@@ -84,6 +84,38 @@ class WorkspaceManager:
             test_context = json.load(f)
         return test_context
 
+    # This function saves the imports and functions used in the final test file for each iteration
+    def save_cur_imports_and_functions(self, imports: set, functions: dict) -> None:
+        all_imports_and_funcs = {
+            "imports": imports,
+            "functions": functions
+        }
+        with open(os.path.join(self.get_coder_output_dir(), "all_imports_and_funcs.pkl"), "wb") as f:
+            pickle.dump(all_imports_and_funcs, f)
+
+    def load_cur_imports_and_functions(self) -> dict:
+        with open(os.path.join(self.get_coder_output_dir(), "all_imports_and_funcs.pkl"), "rb") as f:
+            all_imports_and_funcs = pickle.load(f)
+        return all_imports_and_funcs
+
+    # Iterate through all coder iterations and load all imports and functions used
+    def load_all_imports_and_functions(self) -> dict:
+        all_imports = set()
+        all_functions = {}
+        last_completed_iteration = self.get_last_completed_coder_iteration()
+        for iteration in range(last_completed_iteration + 1):
+            iteration_dir = os.path.join(self.coder_dir, f"iteration_{iteration}")
+            imports_and_funcs_path = os.path.join(iteration_dir, "all_imports_and_funcs.pkl")
+            if os.path.exists(imports_and_funcs_path):
+                with open(imports_and_funcs_path, "rb") as f:
+                    imports_and_funcs = pickle.load(f)
+                all_imports.update(imports_and_funcs.get("imports", set()))
+                all_functions.update(imports_and_funcs.get("functions", {}))
+        return {
+            "imports": all_imports,
+            "functions": all_functions
+        }
+
     def save_linter_messages(self, lint_messages: dict) -> None:
         with open(os.path.join(self.get_coder_output_dir(), "lint_messages.json"), "w") as f:
             json.dump(lint_messages, f)
@@ -192,6 +224,10 @@ class WorkspaceManager:
     
     def get_resume_dir(self) -> str:
         return self.get_path("resume")
+
+    def get_final_output_dir(self) -> str:
+        self.create_subdirectory("final_output")
+        return self.get_path("final_output")
 
     def check_for_logfile(self) -> bool:
         log_file_path = self.get_path("output.log")

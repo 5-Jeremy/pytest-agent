@@ -181,14 +181,12 @@ def generate(
         # Save test_cases to a file in case we need to resume later; note that test_case_plans can be extracted
         # from the logged files
         verbose_log("Saving generated test cases to resume directory.")
-        log_dir = workspace.get_resume_dir()
-        pickle.dump(test_cases, open(os.path.join(log_dir, "test_cases.pkl"), "wb"))
+        # pickle.dump(test_cases, open(os.path.join(workspace.get_resume_dir(), "test_cases.pkl"), "wb"))
         workspace.set_status("CODE_GENERATED")
     else:
         console.print(f"[bold blue]Loading data from previous runs...[/bold blue]")
         # Load test_cases from the resume directory
-        log_dir = workspace.get_resume_dir()
-        test_cases = pickle.load(open(os.path.join(log_dir, "test_cases.pkl"), "rb"))
+        # test_cases = pickle.load(open(os.path.join(workspace.get_resume_dir(), "test_cases.pkl"), "rb"))
         # Load existing plan
         with open(Path(workspace.get_planner_output_dir()) / f"planner_response_{Path(file_path).stem}.txt", "r") as f:
             full_plan = f.read()
@@ -198,6 +196,9 @@ def generate(
             test_case_plans = parse_test_case_plan_json(full_plan)
         else:
             raise ValueError(f"Unsupported plan format: {conf['planner']['plan_format']}")
+        # Load the import statements that went into the test file
+        all_imports_and_functions = workspace.load_cur_imports_and_functions()
+        test_cases = all_imports_and_functions.get('functions', {})
         console.print(f"[bold blue]Test code is already generated. Running tests...[/bold blue]")
 
     assert 'test_dir_in_container' in conf['project']
@@ -216,10 +217,41 @@ def generate(
                                        working_dir=conf['project'].get('working_dir', Path(test_dir).parent.as_posix()))
         test_runner.start_container()
         test_results_string = test_runner.run_pytest(test_filepath)
-        verbose_log("Raw pytest output:\n" + test_results_string)
-        console.print("Raw pytest output:\n" + test_results_string)
+        # verbose_log("Raw pytest output:\n" + test_results_string)
+        # console.print("Raw pytest output:\n" + test_results_string)
         test_results_dict, test_feedback = parse_pytest_output(test_results_string)
         return test_results_dict, test_feedback
+
+    def remove_error_source(test_filepath: str, error_line: int):
+        # Remove the line that caused the error from the test file
+        with open(test_filepath, "r") as f:
+            lines = f.readlines()
+
+        if line_num < 1 or line_num > len(lines):
+            raise ValueError(f"Line number {line_num} is out of range for file with {len(lines)} lines.")
+        # If there is a line which comes before line_num that starts with "def test_", remove everything 
+        # from that line to the next line that starts with "def test_" or the end of the file
+        start_index = None
+        for i in range(line_num-1, -1, -1):
+            if lines[i].startswith("def test_"):
+                start_index = i
+                break
+        if start_index is None:
+            # The error was probably caused by an import; just remove line_num
+            del lines[line_num-1]
+        else:
+            end_index = None
+            for j in range(line_num, len(lines)):
+                if lines[j].startswith("def test_"):
+                    end_index = j
+                    break
+            if end_index is None:
+                del lines[start_index:]
+            else:
+                # We delete all lines up to but not including end_index (which is the start of the next test)
+                del lines[start_index:end_index]
+        with open(test_filepath, "w") as f:
+            f.writelines(lines)
 
     ### Run the generated tests inside a Docker container (This is only for the first iteration)
     if workspace.get_status() == "CODE_GENERATED" and workspace.coder_iteration == 0:
@@ -227,6 +259,24 @@ def generate(
         if os.path.exists(test_filepath):
             console.print(f"\n[bold blue]Running generated tests in Docker container '{image_name}'[/bold blue]")
             test_results_dict, test_feedback = run_tests(test_filepath)
+            #####################################################################
+            """ Try to fix errors; TODO: make it a repeated cycle """
+            if test_results_dict is None:
+                console.print(f"\n[bold red]Error detected that prevented tests from running.[/bold red]")
+                if type(test_feedback) == str:
+                    try:
+                        line_num = int(test_feedback)
+                        console.print(f"\n[bold blue]Attempting to remove source of error.[/bold blue]")
+                        remove_error_source(test_filepath, line_num)
+                        test_results_dict, test_feedback = run_tests(test_filepath)
+                    except:
+                        console.print(f"[bold red]Attempt to fix error failed.[/bold red]")
+            # If still None, give up and mark all tests as failed
+            if test_results_dict is None:
+                console.print(f"\n[bold red]Unable to run tests after attempting to fix error. Marking all tests as FAILED.[/bold red]")
+                test_results_dict = {test_name: 'FAILED' for test_name in test_case_plans.keys()}
+                test_feedback = {test_name: "Test could not be run" for test_name in test_case_plans.keys()}
+            #####################################################################
             # Save the test results to a json file
             workspace.save_test_results(test_results_dict, test_feedback)
             print(test_results_dict)
@@ -261,7 +311,7 @@ def generate(
             "previous_code": test_cases.get(test_name, None),
             "test_plan": test_case_plans[test_name],
             "linter_message": linter_messages.get(test_name, None),
-            "test_result": test_results_dict.get(test_name, None),
+            "test_result": test_results_dict.get(test_name, None), # Note that this will be None for tests which passed on previous iterations AND for tests which did not make it past the linter
             "test_feedback": test_feedback.get(test_name, None)
         }
     workspace.save_test_context(test_context)
@@ -275,8 +325,9 @@ def generate(
     # If resuming, check if we have already reached max attempts. If so, only consider if the user desires to exceed it
     if curr_attempts >= max_attempts:
         console.print(f"\n[bold yellow]Maximum number of attempts ({max_attempts}) already reached. Continue anyways?[/bold yellow]")
-        typer.confirm("Do you want to continue generating tests?", abort=True)
-        max_attempts = curr_attempts + 1  # Allow one more attempt
+        continue_generating = typer.confirm("Do you want to continue generating tests?")
+        if continue_generating:
+            max_attempts = curr_attempts + 1  # Allow one more attempt
 
     while curr_attempts < max_attempts:
         # From now on, the status will only ever be "CODE_TESTED" or "CODE_GENERATED"
@@ -410,11 +461,31 @@ def generate(
             combine_and_write_tests(test_cases, import_statements, Path(file_path), workspace.get_coder_output_dir(), module_import_path)
 
             workspace.save_linter_messages(lint_messages)
+
+            workspace.save_cur_imports_and_functions(import_statements, test_cases)
             workspace.set_status("CODE_GENERATED")
 
         test_filepath = os.path.join(workspace.get_coder_output_dir(), f"test_{path.stem}.py")
         console.print(f"\n[bold blue]Running generated tests in Docker container '{image_name}'[/bold blue]")
         test_results_dict, test_feedback = run_tests(test_filepath)
+        #####################################################################
+        """ Try to fix errors; TODO: make it a repeated cycle """
+        if test_results_dict is None:
+            console.print(f"\n[bold red]Error detected that prevented tests from running.[/bold red]")
+            if type(test_feedback) == str:
+                try:
+                    line_num = int(test_feedback)
+                    console.print(f"\n[bold blue]Attempting to remove source of error.[/bold blue]")
+                    remove_error_source(test_filepath, line_num)
+                    test_results_dict, test_feedback = run_tests(test_filepath)
+                except:
+                    console.print(f"[bold red]Attempt to fix error failed.[/bold red]")
+        # If still None, give up and mark all tests as failed
+        if test_results_dict is None:
+            console.print(f"\n[bold red]Unable to run tests after attempting to fix error. Marking all tests as FAILED.[/bold red]")
+            test_results_dict = {test_name: 'FAILED' for test_name in test_case_plans.keys()}
+            test_feedback = {test_name: "Test could not be run" for test_name in test_case_plans.keys()}
+        #####################################################################
         # Save the test results to a json file
         workspace.save_test_results(test_results_dict, test_feedback)
         print(test_results_dict)
@@ -442,6 +513,18 @@ def generate(
         workspace.next_coder_iteration()
         curr_attempts += 1
 
-    
-    
+    # Collect all the passed tests and write them to a final test file
+    all_passed_tests = set(test_case_plans.keys()) - set(workspace.get_remaining_tests())
+    passed_test_cases = {}
+    all_imports_and_functions = workspace.load_all_imports_and_functions()
+    for test_name in all_passed_tests:
+        passed_test_cases[test_name] = all_imports_and_functions['functions'][test_name]
+    # Write the final file with all passing tests
+    combine_and_write_tests(passed_test_cases, 
+                            all_imports_and_functions['imports'], 
+                            Path(file_path), 
+                            workspace.get_final_output_dir(), 
+                            module_import_path, 
+                            "final_tests.py")
+    console.print(f"\n✅ [bold green]Final test file with all passing tests written to {workspace.get_final_output_dir()}[/bold green]")
 

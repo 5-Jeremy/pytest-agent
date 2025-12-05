@@ -162,7 +162,8 @@ def combine_and_write_tests(
         import_statements: set, 
         file_path: Path, 
         test_dir: str, 
-        module_import_path: str
+        module_import_path: str,
+        output_filename: Optional[str] = None
     ):
     # Create a single file with all the test cases
     if len(test_cases) > 0:
@@ -170,7 +171,7 @@ def combine_and_write_tests(
             import_statements, list(test_cases.values()), file_path.stem, module_import_path
         )
         # Write the combined test file
-        test_file_name = f"test_{file_path.stem}.py"
+        test_file_name = output_filename if output_filename else f"test_{file_path.stem}.py"
         test_file_path = Path(os.path.join(test_dir, test_file_name))
 
         with open(test_file_path, "w", encoding="utf-8") as f:
@@ -338,6 +339,7 @@ def process_project(
     
     # Make sure the functions to be tested are imported in the test file
     import_statements.update(function_imports)
+    workspace.save_cur_imports_and_functions(import_statements, test_cases)
     
     # Create a single file with all the test cases
     combine_and_write_tests(test_cases, import_statements, file_path, test_dir, module_import_path)
