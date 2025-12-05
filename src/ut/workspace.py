@@ -1,14 +1,18 @@
-import os, pickle, json
+import os, pickle, json, shutil
+from omegaconf import OmegaConf
 from typing import Tuple
 from src.ut.llm_client import parse_test_case_plan_json
 
 class WorkspaceManager:
-    def __init__(self, base_dir: str, fresh_start: bool = False) -> None:
+    def __init__(self, base_dir: str, fresh_start: bool = False, config_path: str = None) -> None:
         self.base_dir = base_dir
         self.planner_dir = self.create_subdirectory("planner")
         self.coder_dir = self.create_subdirectory("coder")
         self.resume_dir = self.create_subdirectory("resume")
         if fresh_start:
+            if config_path is not None:
+                # Copy the config file into the workspace
+                shutil.copy(config_path, os.path.join(self.base_dir, "config.yaml"))
             self.set_status("START")
             self.coder_iteration = 0
         else:
@@ -172,6 +176,13 @@ class WorkspaceManager:
         with open(plan_path, "r") as f:
             plan = parse_test_case_plan_json(f.read())
         return plan
+
+    def get_config(self):
+        config_path = os.path.join(self.base_dir, "config.yaml")
+        if not os.path.exists(config_path):
+            raise FileNotFoundError("Config file not found in workspace.")
+        config = OmegaConf.load(config_path)
+        return config
 
     def get_coder_output_dir(self) -> str:
         return os.path.join(self.coder_dir, f"iteration_{self.coder_iteration}")

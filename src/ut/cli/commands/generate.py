@@ -104,9 +104,12 @@ def generate(
     clean_temp_files()
 
     # Get config
-    if ".yaml" not in config_name:
-        config_name += ".yaml"
-    conf = OmegaConf.load(os.path.join("configs", config_name))
+    if resume_from is not None:
+        conf = workspace.get_config()
+    else:
+        if ".yaml" not in config_name:
+            config_name += ".yaml"
+        conf = OmegaConf.load(os.path.join("configs", config_name))
     if plan_path is not None:
         conf['predefined_plan_path'] = plan_path
     elif workspace.get_status() not in ["START"]:
