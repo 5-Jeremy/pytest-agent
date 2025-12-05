@@ -77,12 +77,16 @@ def generate(
     After generation, review the tests in ut_output/ and move them to your
     project's test directory as needed.
     """
+
+    if ".yaml" not in config_name:
+            config_name += ".yaml"
+            
     ### Setup WorkspaceManager
     if resume_from is not None:
         workspace = WorkspaceManager(base_dir=resume_from)
     else:
         name = "Workspaces/" + file_path.strip('/').split('/')[-1] + "_" + datetime.now().strftime("%m-%d_%H:%M:%S")
-        workspace = WorkspaceManager(base_dir=name, fresh_start=True)
+        workspace = WorkspaceManager(base_dir=name, fresh_start=True, config_path=os.path.join("configs", config_name))
     # If we are resuming, there will already be an output.log file. Otherwise, create one
     if not workspace.check_for_logfile():
         with open(workspace.get_path("output.log"), "w") as log_file:
@@ -107,8 +111,6 @@ def generate(
     if resume_from is not None:
         conf = workspace.get_config()
     else:
-        if ".yaml" not in config_name:
-            config_name += ".yaml"
         conf = OmegaConf.load(os.path.join("configs", config_name))
     if plan_path is not None:
         conf['predefined_plan_path'] = plan_path
