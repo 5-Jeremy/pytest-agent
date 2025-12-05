@@ -27,7 +27,7 @@ def parse_pytest_output(pytest_output: str) -> Dict[str, str]:
 
     # Check for an error preventing the tests from running; if this happens, nothing can be extracted
     # on a per-test basis (the error that caused this could be used as feedback but currently is not)
-    if "__________________ ERROR collecting" in pytest_output:
+    if "__ ERROR collecting" in pytest_output:
         # Check for a specific line which throws the error:
         for line in pytest_output.split('\n'):
             if line.startswith("E     File"):
