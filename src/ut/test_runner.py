@@ -314,11 +314,11 @@ class DockerTestRunner:
         exit_code, output = self._exec_command(pytest_cmd)
 
         # Copy the cov.json file back to host if it exists
-        if exit_code == 0 and test_file_path:
-            # Try to copy coverage report if it exists
+        if exit_code in [0, 1] and test_file_path:
             cov_file_in_container = f"{self.working_dir}/cov.json"
-            if self.copy_file_from_container(cov_file_in_container, "./agent_workspace/cov.json"):
-                print("Coverage report copied to ./cov.json")
+            cov_report_host_path = os.path.join(Path(test_file_path).parent, "cov.json")
+            if self.copy_file_from_container(cov_file_in_container, cov_report_host_path):
+                print(f"Coverage report copied to {cov_report_host_path}")
 
         # Delete the test file if it was copied in
         if copy_first and test_file_path:
