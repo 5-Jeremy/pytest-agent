@@ -1,0 +1,29 @@
+planner:
+  plan_format: json
+coder:
+  max_attempts: 3
+project:
+  module_name: parse
+  docker_image_name: unittest:parse
+  test_dir_in_container: /code/tests
+  include_init_files: false
+  extra_ignore_list:
+    - "tests"
+  names_to_test:
+    - "with_pattern"
+    - "int_convert"
+    - "convert_first"
+    - "percentage"
+    - "FixedTzOffset"
+    - "date_convert"
+    - "strf_date_convert"
+    - "get_regex_for_datetime_format"
+    - "extract_format"
+    - "Parser"
+    - "Result"
+    - "Match"
+    - "ResultIterator"
+    - "parse"
+    - "search"
+    - "findall"
+    - "compile"

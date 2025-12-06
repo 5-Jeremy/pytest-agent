@@ -1,0 +1,16 @@
+planner:
+  plan_format: json
+coder:
+  max_attempts: 3
+project:
+  module_name: purl
+  docker_image_name: unittest:purl
+  test_dir_in_container: /code/tests
+  include_init_files: false
+  extra_ignore_list:
+    - "tests"
+    - "docs"
+  names_to_test:
+    - "URL"
+    - "expand"
+    - "Template"

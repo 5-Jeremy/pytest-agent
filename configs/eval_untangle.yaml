@@ -1,0 +1,19 @@
+planner:
+  plan_format: json
+coder:
+  max_attempts: 3
+project:
+  module_name: untangle
+  docker_image_name: unittest:untangle
+  test_dir_in_container: /code/tests
+  include_init_files: false
+  extra_ignore_list:
+    - "docs"
+    - "tests"
+    - "setup.py"
+    - "examples.py"
+  names_to_test:
+    - "Element"
+    - "parse"
+    - "Handler"
+    - "is_url"

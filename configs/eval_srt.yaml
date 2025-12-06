@@ -1,0 +1,23 @@
+planner:
+  plan_format: json
+coder:
+  max_attempts: 3
+project:
+  module_name: srt
+  docker_image_name: unittest:srt
+  test_dir_in_container: /code/srt/tests
+  include_init_files: false
+  extra_ignore_list:
+    - "examples"
+    - "docs"
+    - "setup.py"
+  names_to_test:
+    - "Subtitle"
+    - "make_legal_content"
+    - "timedelta_to_srt_timestamp"
+    - "srt_timestamp_to_timedelta"
+    - "sort_and_reindex"
+    - "_should_skip_sub"
+    - "parse"
+    - "_check_contiguity"
+    - "compose"

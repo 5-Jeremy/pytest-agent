@@ -1,0 +1,40 @@
+planner:
+  plan_format: json
+coder:
+  max_attempts: 3
+project:
+  module_name: docopt
+  docker_image_name: unittest:docopt
+  test_dir_in_container: /code/docopt
+  include_init_files: false
+  extra_ignore_list:
+    - "examples"
+    - "test_docopt.py"
+    - "conftest.py"
+    - "setup.py"
+  names_to_test:
+    - "Pattern"
+    - "transform"
+    - "LeafPattern"
+    - "BranchPattern"
+    - "Argument"
+    - "Command"
+    - "Option"
+    - "Required"
+    - "Optional"
+    - "OptionsShortcut"
+    - "OneOrMore"
+    - "Either"
+    - "Tokens"
+    - "parse_long"
+    - "parse_shorts"
+    - "parse_pattern"
+    - "parse_expr"
+    - "parse_seq"
+    - "parse_atom"
+    - "parse_argv"
+    - "parse_defaults"
+    - "parse_section"
+    - "formal_usage"
+    - "extras"
+    - "docopt"

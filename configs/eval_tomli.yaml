@@ -1,0 +1,19 @@
+planner:
+  plan_format: json
+coder:
+  max_attempts: 3
+project:
+  module_name: tomli
+  docker_image_name: unittest:tomli
+  test_dir_in_container: /code/tests
+  include_init_files: false
+  extra_ignore_list:
+    - "tests"
+    - "benchmark"
+    - "fuzzer"
+    - "profiler"
+    - "scripts"
+    - "setup.py"
+  names_to_test:
+    - "load"
+    - "loads"

@@ -1,0 +1,29 @@
+planner:
+  plan_format: json
+coder:
+  max_attempts: 3
+project:
+  module_name: portion
+  docker_image_name: unittest:portion
+  test_dir_in_container: /code/tests
+  include_init_files: false
+  extra_ignore_list:
+    - "tests"
+  names_to_test:
+    - "create_api"
+    - "Bound"
+    - "inf"
+    - "IntervalDict"
+    - "closed"
+    - "closedopen"
+    - "empty"
+    - "iterate"
+    - "open"
+    - "openclosed"
+    - "singleton"
+    - "AbstractDiscreteInterval"
+    - "Interval"
+    - "from_data"
+    - "from_string"
+    - "to_data"
+    - "to_string"

@@ -3,6 +3,8 @@ old/
 Workspaces/
 logs/
 eval_repos/
+coverage_reports/
+eval_plots/
 
 ### Python template
 # Byte-compiled / optimized / DLL files

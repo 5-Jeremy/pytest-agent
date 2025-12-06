@@ -1,0 +1,18 @@
+planner:
+  plan_format: json
+coder:
+  max_attempts: 3
+project:
+  module_name: uritemplate
+  docker_image_name: unittest:uritemplate
+  test_dir_in_container: /code/tests
+  include_init_files: false
+  extra_ignore_list:
+    - "tests"
+    - "docs"
+    - "setup.py"
+  names_to_test:
+    - "URITemplate"
+    - "partial"
+    - "expand"
+    - "variables"

@@ -1,0 +1,26 @@
+planner:
+  plan_format: json
+coder:
+  max_attempts: 3
+project:
+  module_name: pathspec
+  docker_image_name: unittest:python-pathspec
+  test_dir_in_container: /code/tests
+  include_init_files: false
+  extra_ignore_list:
+    - "tests"
+    - "doc"
+    - "benchmarks"
+    - "setup.py"
+    - "prebuild.py"
+    - "_typing.py"
+    - "_meta.py"
+    - "_backends"
+  names_to_test:
+    - "PathSpec"
+    - "Pattern"
+    - "RegexPattern"
+    - "lookup_pattern"
+    - "GitIgnoreSpec"
+    - "iter_tree"
+    - "match_files"

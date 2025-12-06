@@ -1,0 +1,13 @@
+planner:
+  plan_format: json
+coder:
+  max_attempts: 3
+project:
+  module_name: url-normalize
+  docker_image_name: unittest:url-normalize
+  test_dir_in_container: /code/tests
+  include_init_files: false
+  extra_ignore_list:
+    - "tests"
+  names_to_test:
+    - "url_normalize"
