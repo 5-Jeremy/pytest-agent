@@ -35,7 +35,7 @@ def parse_pytest_output(pytest_output: str) -> Dict[str, str]:
                     feedback = int(line.split("line")[-1].strip())
                 except Exception:
                     pass
-            elif "ModuleNotFoundError" in line:
+            elif "ModuleNotFoundError" in line or "ImportError" in line:
                 try:
                     feedback = line.split("'")[1]
                 except Exception:
