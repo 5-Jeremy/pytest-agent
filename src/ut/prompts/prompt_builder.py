@@ -1,5 +1,6 @@
 """Automated Unit Test Generation CLI with AI."""
 from ut.constants import FILE_PATH_PROMPT
+from ut.prompts.planner_prompt import PROMPT_JSON_THOROUGH_PREFIX, PROMPT_CONTEXT
 from ut.prompts.coder_prompts import INSTRUCTION_PROMPT_FIRST_ATTEMPT, INSTRUCTION_PROMPT_AFTER_LINT_FAIL, INSTRUCTION_PROMPT_AFTER_TEST_FAIL
 
 def _load_prompt(prompt_file):
@@ -11,18 +12,24 @@ def _load_prompt(prompt_file):
         print(f"Prompt file not found: {full_path}")
         exit(1)
 
-def generate_planner_prompt(package_code: str, template_path: str) -> str:
-    instructions_prompt = _load_prompt(template_path)
-    prompt = instructions_prompt + "\nFull code:\n" + package_code
+def generate_planner_prompt(package_code: str, function_and_class_names: str) -> str:
+    function_and_class_names_str = ", ".join(function_and_class_names)
+    prompt_context = PROMPT_CONTEXT.format(
+        relevant_code=package_code,
+        function_and_class_names=function_and_class_names_str,
+    )
+    prompt = PROMPT_JSON_THOROUGH_PREFIX + prompt_context
     return prompt
 
 def generate_coder_prompt(
     function_code: str,
     test_plan: str,
+    allowed_imports: str,
 ) -> str:
     prompt = INSTRUCTION_PROMPT_FIRST_ATTEMPT.format(
         function_code=function_code,
         test_plan=test_plan,
+        allowed_imports=allowed_imports,
     )
     return prompt
 
@@ -32,19 +39,22 @@ def generate_coder_revision_prompt(
     prev_attempt_code: str,
     type_of_revision: str,
     feedback_message: str,
+    allowed_imports: str,
 ) -> str:
     if type_of_revision == "lint":
         prompt = INSTRUCTION_PROMPT_AFTER_LINT_FAIL.format(
             test_code=prev_attempt_code,
             lint_message=feedback_message,
             test_plan=test_plan,
-            function_code=function_code,)
+            function_code=function_code,
+            allowed_imports=allowed_imports,)
     elif type_of_revision == "test_fail":
         prompt = INSTRUCTION_PROMPT_AFTER_TEST_FAIL.format(
             test_code=prev_attempt_code,
             pytest_message=feedback_message,
             test_plan=test_plan,
-            function_code=function_code,)
+            function_code=function_code,
+            allowed_imports=allowed_imports,)
     else:
         raise ValueError(f"Unknown type of revision: {type_of_revision}")
     return prompt

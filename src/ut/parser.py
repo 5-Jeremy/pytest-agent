@@ -184,6 +184,7 @@ def calculate_import_path_simple(file_path: Path) -> str:
 
     return ".".join(parts)
 
+# Currently not used because it doesn't handle importing from the module under test well
 def get_function_imports(file_path, function_locs, class_locs):
     """Get all import statements for functions that will be tested
 

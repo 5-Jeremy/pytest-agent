@@ -239,6 +239,7 @@ def generate(
         else:
             console.print(f"\n[bold red]Test file {test_filepath} not found in coder output directory. This means no valid tests were generated.[/bold red]")
             console.print(f"[dim]Skipping testing.[/dim]")
+            test_results_dict = {}
         
         workspace.set_status("CODE_TESTED")
         workspace.next_coder_iteration()
@@ -309,7 +310,8 @@ def generate(
             class_locs = {name: func_and_class_info['classes'][name]["location"] for name in func_and_class_info['classes'].keys()}
             import_statements = set()
             # Make sure the functions to be tested are imported in the test file
-            function_imports = get_function_imports(path, function_locs, class_locs)
+            # function_imports = get_function_imports(path, function_locs, class_locs)
+            function_imports = [f"from {conf['project']['module_name'].replace('-', '_')} import {name}" for name in conf['project']['names_to_test']]
             import_statements.update(function_imports)
             module_import_path = calculate_import_path_simple(path)
             for test_name in retry_from_scratch:
@@ -317,12 +319,16 @@ def generate(
                 # Re-create the prompt using the previously generated plan and the saved function and class dicts
                 test_plan = test_case_plans[test_name]
 
+                # NOTE: These are the imports which actually matter
+                allowed_imports = "\n".join(function_imports) + "\nimport pytest\n" + "\n".join([f"import {module}" for module in test_plan.get("external_imports", [])])
+
                 function_code_context = get_context_for_test_gen(
                     test_plan, function_dict, class_dict
                 )
                 prompt = generate_coder_prompt(
                     function_code_context,
-                    f"{test_name}: {test_plan}"
+                    f"{test_name}: {test_plan}",
+                    allowed_imports=allowed_imports,
                 )
                 prompts[test_name] = prompt
             
@@ -330,6 +336,8 @@ def generate(
                 verbose_log(f"\n  → Generating refined prompt for lint-failed test: [cyan]{test_name}[/cyan]")
                 # Get the original plan and the test result details
                 test_plan = test_context[test_name]['test_plan']
+                # NOTE: These are the imports which actually matter
+                allowed_imports = "\n".join(function_imports) + "\nimport pytest\n" + "\n".join([f"import {module}" for module in test_plan.get("external_imports", [])])
                 function_code_context = get_context_for_test_gen(
                     test_plan, function_dict, class_dict
                 )
@@ -339,7 +347,8 @@ def generate(
                     f"{test_name}: {test_context[test_name]['test_plan']}",
                     prev_attempt_code=test_context[test_name]["previous_code"],
                     type_of_revision="lint",
-                    feedback_message=test_context[test_name]["linter_message"]
+                    feedback_message=test_context[test_name]["linter_message"],
+                    allowed_imports=allowed_imports,
                 )
                 prompts[test_name] = prompt
 
@@ -347,6 +356,8 @@ def generate(
                 verbose_log(f"\n  → Generating refined prompt for failed test: [cyan]{test_name}[/cyan]")
                 # Get the original plan and the test result details
                 test_plan = test_context[test_name]['test_plan']
+                # NOTE: These are the imports which actually matter
+                allowed_imports = "\n".join(function_imports) + "\nimport pytest\n" + "\n".join([f"import {module}" for module in test_plan.get("external_imports", [])])
                 function_code_context = get_context_for_test_gen(
                     test_plan, function_dict, class_dict
                 )
@@ -357,12 +368,14 @@ def generate(
                         f"{test_name}: {test_context[test_name]['test_plan']}",
                         prev_attempt_code=test_context[test_name]["previous_code"],
                         type_of_revision="test_fail",
-                        feedback_message=test_context[test_name]["test_feedback"]
+                        feedback_message=test_context[test_name]["test_feedback"],
+                        allowed_imports=allowed_imports,
                     )
                 else:
                     prompt = generate_coder_prompt(
                         function_code_context,
-                        f"{test_name}: {test_context[test_name]['test_plan']}"
+                        f"{test_name}: {test_context[test_name]['test_plan']}",
+                        allowed_imports=allowed_imports,
                     )
                     
                 prompts[test_name] = prompt

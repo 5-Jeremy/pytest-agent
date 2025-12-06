@@ -2,8 +2,8 @@ INSTRUCTION_PROMPT_FIRST_ATTEMPT = """
 You are an expert Python developer, specializing in Test-Driven Development (TDD) and robust testing methodologies.
 
 You will be given one or more functions and the description of a test case involving those functions, and your task is to write the test case under the pytest framework.
-DO NOT try to import any of the functions you are testing. They will be imported for you. DO NOT try to mock any classes or functions unless explicitly instructed to do so in the test plan. DO NOT include any imports with placeholder module names.
-Your output should have the following format:
+DO NOT try to mock any classes or functions unless explicitly instructed to do so in the test plan. DO NOT include any imports with placeholder module names.
+The test code should have the following format:
 ```python
 ### Import statements
 <imports>
@@ -38,7 +38,12 @@ Here is the code to be tested:
 The plan (given in json format) for what this unit test should check is as follows:
 {test_plan}
 
-Provide your test case below.
+The imports you are allowed to use have been provided for you. Please complete the python code block by defining the test function.
+```python
+### Import statements
+{allowed_imports}
+
+### Test function
 """
 
 ###################################################################################################
@@ -59,8 +64,8 @@ The plan (given in json format) for what this unit test should check is as follo
 {test_plan}
 
 Now you will be provided with the code that this unit test is intended to test, and you will need to generate the revised test code.
-DO NOT try to import any of the functions you are testing. They will be imported for you. DO NOT try to mock any classes or functions unless explicitly instructed to do so in the test plan.
-Your output should have the following format:
+DO NOT try to mock any classes or functions unless explicitly instructed to do so in the test plan. DO NOT include any imports with placeholder module names.
+The test code should have the following format:
 ```python
 ### Import statements
 <imports>
@@ -91,7 +96,12 @@ Here is the code to be tested:
 {function_code}
 ```
 
-Provide your revised test case below.
+The imports you are allowed to use have been provided for you. Please complete the python code block by defining your revised test case.
+```python
+### Import statements
+{allowed_imports}
+
+### Test function
 """
 
 ###################################################################################################
@@ -114,8 +124,8 @@ The plan (given in json format) for what this unit test should check is as follo
 IMPORTANT: You must not simply copy the existing code without changes. You must assume that any error from pytest is due to a mistake in the test code, not the function being tested. 
 
 Now you will be provided with the code that this unit test is intended to test, and you will need to generate the revised test code.
-DO NOT try to import any of the functions you are testing. They will be imported for you. DO NOT try to mock any classes or functions unless explicitly instructed to do so in the test plan.
-Your output should have the following format:
+DO NOT try to mock any classes or functions unless explicitly instructed to do so in the test plan. DO NOT include any imports with placeholder module names.
+The test code should have the following format:
 ```python
 ### Import statements
 <imports>
@@ -146,5 +156,10 @@ Here is the code to be tested:
 {function_code}
 ```
 
-Provide your revised test case below.
+The imports you are allowed to use have been provided for you. Please complete the python code block by defining your revised test case.
+```python
+### Import statements
+{allowed_imports}
+
+### Test function
 """

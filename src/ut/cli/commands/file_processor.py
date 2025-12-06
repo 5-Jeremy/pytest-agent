@@ -227,7 +227,8 @@ def process_project(
     verbose_log(f"[dim]Test output directory: {test_dir}[/dim]")
 
     module_import_path = calculate_import_path_simple(file_path)
-    function_imports = get_function_imports(file_path, function_locs, class_locs)
+    # function_imports = get_function_imports(file_path, function_locs, class_locs)
+    function_imports = [f"from {conf['project']['module_name'].replace('-', '_')} import {name}" for name in conf['project']['names_to_test']]
 
     # Concatenate the source code of all files to send to the LLM
     combined_source_code = ""
@@ -240,7 +241,7 @@ def process_project(
             continue
 
     # Make the prompt for the planner
-    prompt = generate_planner_prompt(combined_source_code, template_path=conf['planner']['prompt_file'])
+    prompt = generate_planner_prompt(combined_source_code, function_and_class_names=conf['project']['names_to_test'])
 
     if dry_run:
         console.print(f"    [dim]Would generate test plan for project in {file_path}[/dim]")
@@ -286,6 +287,7 @@ def process_project(
     # For now, we process prompts one at a time; in the future, they should be batched if memory allows
     # or divided across GPUs if multiple are available
     prompts = {}
+    pre_generated_parts = {}
     test_cases = {}
     import_statements = set()
     for test_name, test_plan in test_case_plans.items():
@@ -293,10 +295,14 @@ def process_project(
         function_code_context = get_context_for_test_gen(
             test_plan, function_dict, class_dict
         )
-        
+
+        allowed_imports = "\n".join(function_imports) + "\nimport pytest\n" + "\n".join([f"import {module}" for module in test_plan.get("external_imports", [])])
+        pre_generated_parts[test_name] = f"```python\n### Import statements\n{allowed_imports}\n\n### Test function\n"
+
         prompt = generate_coder_prompt(
             function_code_context,
-            f"{test_name}: {test_plan}"
+            f"{test_name}: {test_plan}",
+            allowed_imports=allowed_imports,
         )
         prompts[test_name] = prompt
 
@@ -309,11 +315,13 @@ def process_project(
     
     lint_messages = {}
     for test_name, response in responses.items():
-        cleaned_response = clean_coder_response(response, test_name, test_dir)
+        # Manually replace any imports which the LLM generated, since it usually adds invalid ones
+        full_response = pre_generated_parts[test_name] + response.split("### Test function")[-1]
+        # Note that the generated response gets saved to a file in this function
+        cleaned_response = clean_coder_response(full_response, test_name, test_dir)
 
         if cleaned_response is None:
             console.print(f"[yellow]Unable to parse generated test for {test_name}. Will retry on next iteration.[/yellow]")
-            # breakpoint()
             continue
         
         # For convenience, we use the same function that is used to create the final test file here
