@@ -13,8 +13,7 @@ from ut.parser import get_context_for_test_gen, calculate_import_path_simple, ge
 from ut.prompts.prompt_builder import generate_coder_prompt, generate_coder_revision_prompt
 from ut.test_writer import extract_imports_and_functions, combine_test_code, clean_coder_response
 from ut.test_checker import lint_test_case
-from ut.test_runner import DockerTestRunner
-from ut.results_parser import parse_pytest_output
+from ut.test_runner import run_tests_with_error_removal
 from ut.workspace import WorkspaceManager
 from omegaconf import OmegaConf
 import os, shutil, pickle, json
@@ -210,75 +209,18 @@ def generate(
         console.print(f"\n[bold yellow]Skipping test execution: Docker image name or test directory in container not specified in configuration.[/bold yellow]")
         console.print(f"[dim]Stopping here.[/dim]")
         return
-    def run_tests(test_filepath: str) -> dict:
-        # The working directory is where pytest will be run from
-        # Be default we assume that the directory for tests is inside the working directory, so if no working dir is specified we derive it from test_dir
-        test_runner = DockerTestRunner(image_name=image_name, 
-                                       container_name="ut_generate", 
-                                       test_dir_in_container=test_dir, 
-                                       working_dir=conf['project'].get('working_dir', Path(test_dir).parent.as_posix()))
-        test_runner.start_container()
-        test_results_string = test_runner.run_pytest(test_filepath)
-        # verbose_log("Raw pytest output:\n" + test_results_string)
-        # console.print("Raw pytest output:\n" + test_results_string)
-        test_results_dict, test_feedback = parse_pytest_output(test_results_string)
-        return test_results_dict, test_feedback
-
-    def remove_error_source(test_filepath: str, error_line: int):
-        # Remove the line that caused the error from the test file
-        with open(test_filepath, "r") as f:
-            lines = f.readlines()
-
-        if line_num < 1 or line_num > len(lines):
-            raise ValueError(f"Line number {line_num} is out of range for file with {len(lines)} lines.")
-        # If there is a line which comes before line_num that starts with "def test_", remove everything 
-        # from that line to the next line that starts with "def test_" or the end of the file
-        start_index = None
-        for i in range(line_num-1, -1, -1):
-            if lines[i].startswith("def test_"):
-                start_index = i
-                break
-        if start_index is None:
-            # The error was probably caused by an import; just remove line_num
-            del lines[line_num-1]
-        else:
-            end_index = None
-            for j in range(line_num, len(lines)):
-                if lines[j].startswith("def test_"):
-                    end_index = j
-                    break
-            if end_index is None:
-                del lines[start_index:]
-            else:
-                # We delete all lines up to but not including end_index (which is the start of the next test)
-                del lines[start_index:end_index]
-        with open(test_filepath, "w") as f:
-            f.writelines(lines)
-
+    
     ### Run the generated tests inside a Docker container (This is only for the first iteration)
     if workspace.get_status() == "CODE_GENERATED" and workspace.coder_iteration == 0:
         test_filepath = os.path.join(output_base, f"test_{path.stem}.py")
         if os.path.exists(test_filepath):
             console.print(f"\n[bold blue]Running generated tests in Docker container '{image_name}'[/bold blue]")
-            test_results_dict, test_feedback = run_tests(test_filepath)
-            #####################################################################
-            """ Try to fix errors; TODO: make it a repeated cycle """
-            if test_results_dict is None:
-                console.print(f"\n[bold red]Error detected that prevented tests from running.[/bold red]")
-                if type(test_feedback) == str:
-                    try:
-                        line_num = int(test_feedback)
-                        console.print(f"\n[bold blue]Attempting to remove source of error.[/bold blue]")
-                        remove_error_source(test_filepath, line_num)
-                        test_results_dict, test_feedback = run_tests(test_filepath)
-                    except:
-                        console.print(f"[bold red]Attempt to fix error failed.[/bold red]")
+            test_results_dict, test_feedback = run_tests_with_error_removal(test_filepath, conf)
             # If still None, give up and mark all tests as failed
             if test_results_dict is None:
                 console.print(f"\n[bold red]Unable to run tests after attempting to fix error. Marking all tests as FAILED.[/bold red]")
                 test_results_dict = {test_name: 'FAILED' for test_name in test_case_plans.keys()}
                 test_feedback = {test_name: "Test could not be run" for test_name in test_case_plans.keys()}
-            #####################################################################
             # Save the test results to a json file
             workspace.save_test_results(test_results_dict, test_feedback)
             print(test_results_dict)
@@ -469,25 +411,12 @@ def generate(
 
         test_filepath = os.path.join(workspace.get_coder_output_dir(), f"test_{path.stem}.py")
         console.print(f"\n[bold blue]Running generated tests in Docker container '{image_name}'[/bold blue]")
-        test_results_dict, test_feedback = run_tests(test_filepath)
-        #####################################################################
-        """ Try to fix errors; TODO: make it a repeated cycle """
-        if test_results_dict is None:
-            console.print(f"\n[bold red]Error detected that prevented tests from running.[/bold red]")
-            if type(test_feedback) == str:
-                try:
-                    line_num = int(test_feedback)
-                    console.print(f"\n[bold blue]Attempting to remove source of error.[/bold blue]")
-                    remove_error_source(test_filepath, line_num)
-                    test_results_dict, test_feedback = run_tests(test_filepath)
-                except:
-                    console.print(f"[bold red]Attempt to fix error failed.[/bold red]")
+        test_results_dict, test_feedback = run_tests_with_error_removal(test_filepath, conf)
         # If still None, give up and mark all tests as failed
         if test_results_dict is None:
             console.print(f"\n[bold red]Unable to run tests after attempting to fix error. Marking all tests as FAILED.[/bold red]")
             test_results_dict = {test_name: 'FAILED' for test_name in test_case_plans.keys()}
             test_feedback = {test_name: "Test could not be run" for test_name in test_case_plans.keys()}
-        #####################################################################
         # Save the test results to a json file
         workspace.save_test_results(test_results_dict, test_feedback)
         print(test_results_dict)

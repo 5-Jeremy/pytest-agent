@@ -10,6 +10,11 @@ import io
 from typing import Optional, Dict, Any
 from pathlib import Path
 
+from rich.console import Console
+console = Console()
+
+from ut.results_parser import parse_pytest_output
+
 class DockerTestRunner:
     """
     Manages a persistent Docker container for running pytest tests.
@@ -384,6 +389,92 @@ class DockerTestRunner:
         except:
             pass
 
+def run_tests(test_filepath: str, test_dir: str, image_name: str) -> dict:
+    # The working directory is where pytest will be run from
+    # Be default we assume that the directory for tests is inside the working directory, so if no working dir is specified we derive it from test_dir
+    test_runner = DockerTestRunner(image_name=image_name, 
+                                    container_name="ut_generate", 
+                                    test_dir_in_container=test_dir, 
+                                    working_dir=Path(test_dir).parent.as_posix()
+)
+    test_runner.start_container()
+    test_results_string = test_runner.run_pytest(test_filepath)
+    test_results_dict, test_feedback = parse_pytest_output(test_results_string)
+    print(test_results_string)
+    return test_results_dict, test_feedback
+
+def remove_error_source(test_filepath: str, source, type: str):
+    # Remove the line that caused the error from the test file
+    with open(test_filepath, "r") as f:
+        lines = f.readlines()
+
+    if type == "line":
+        line_num = source
+        if line_num < 1 or line_num > len(lines):
+            raise ValueError(f"Line number {line_num} is out of range for file with {len(lines)} lines.")
+        # If there is a line which comes before line_num that starts with "def test_", remove everything 
+        # from that line to the next line that starts with "def test_" or the end of the file
+        start_index = None
+        for i in range(line_num-1, -1, -1):
+            if lines[i].startswith("def test_"):
+                start_index = i
+                break
+        if start_index is None:
+            # The error was probably caused by a malformed import; just remove line_num
+            del lines[line_num-1]
+        else:
+            end_index = None
+        for j in range(line_num, len(lines)):
+            if lines[j].startswith("def test_"):
+                end_index = j
+                break
+        if end_index is None:
+            del lines[start_index:]
+        else:
+            # We delete all lines up to but not including end_index (which is the start of the next test)
+            del lines[start_index:end_index]
+    elif type == "import":
+        module_name = source
+        # Only consider lines before the first "def test_" statement
+        first_test_index = None
+        for i, line in enumerate(lines):
+            if line.startswith("def test_"):
+                first_test_index = i
+                break
+        if first_test_index is not None:
+            # Find and remove any import statements that reference the module_name
+            lines = [line for line in lines[:first_test_index] if module_name not in line] + lines[first_test_index:]
+
+    with open(test_filepath, "w") as f:
+        f.writelines(lines)
+
+def run_tests_with_error_removal(test_filepath: str, config: dict):
+    """
+    Repeatedly attempts to run the given test file in the Docker container. If an error occurs which prevents
+    the tests from running (e.g., syntax error ir ImportError), it removes the offending test or import 
+    statement and retries until the tests run or no tests remain.
+    """
+    test_dir = config['project'].get('test_dir_in_container', None)
+    image_name = config['project'].get('docker_image_name', None)
+    test_results_dict, test_feedback = run_tests(test_filepath, test_dir, image_name)
+    #####################################################################
+    """ Try to fix errors; TODO: make it a repeated cycle """
+    while test_results_dict is None:
+        console.print(f"\n[bold red]Error detected that prevented tests from running.[/bold red]")
+        try:
+            if type(test_feedback) == int:
+                line_num = test_feedback
+                console.print(f"\n[bold blue]Attempting to remove source of error on line {line_num}.[/bold blue]")
+                remove_error_source(test_filepath, line_num, type="line")
+            elif type(test_feedback) == str:
+                module_name = test_feedback
+                console.print(f"\n[bold blue]Attempting to remove invalid import '{module_name}'.[/bold blue]")
+                remove_error_source(test_filepath, module_name, type="import")
+            test_results_dict, test_feedback = run_tests(test_filepath, test_dir, image_name)
+        except:
+            console.print(f"[bold red]Attempt to fix error failed.[/bold red]")
+            return None, None
+    return test_results_dict, test_feedback
 
 # Example usage
 if __name__ == "__main__":

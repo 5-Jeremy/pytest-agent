@@ -31,7 +31,15 @@ def parse_pytest_output(pytest_output: str) -> Dict[str, str]:
         # Check for a specific line which throws the error:
         for line in pytest_output.split('\n'):
             if line.startswith("E     File"):
-                feedback = line.split("line")[-1].strip()
+                try:
+                    feedback = int(line.split("line")[-1].strip())
+                except Exception:
+                    pass
+            elif "ModuleNotFoundError" in line:
+                try:
+                    feedback = line.split("'")[1]
+                except Exception:
+                    pass
         return None, feedback
 
     # If all tests passed, we can avoid this splitting. An easy way to check is to look for "FAIL"
