@@ -2,12 +2,20 @@
 """ This script calculates the pass rate for each iteration of the coder agent based on the planned tests and
     the test_results.json files. """
 
+from ast import arg
 import os, argparse, sys
 from src.ut.workspace import WorkspaceManager
+
+# Assume matplotlib is available
+import matplotlib.pyplot as plt
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Calculate pass rates from test results.")
     parser.add_argument("dir", type=str, help="Path to a workspace.")
+    parser.add_argument("-o", "--output", type=str, default="pass_rates.png",
+                        help="Output image file to save the plot (default: pass_rates.png)")
+    parser.add_argument("-T", "--title", type=str, default="Test Pass Rates by Iteration",
+                        help="Title of the plot (default: 'Test Pass Rates by Iteration')")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -32,6 +40,9 @@ if __name__ == "__main__":
     
     # Get the set of passed tests for each iteration 
     all_passed_tests = []
+    iterations = []
+    per_iteration_rates = []
+    cumulative_percentages = []
     for iteration in sorted(all_test_results.keys()):
         test_results = all_test_results[iteration]
         total_tests = len(test_results)
@@ -47,5 +58,33 @@ if __name__ == "__main__":
         passed_tests = sum(1 for result in test_results.values() if result == "PASSED")
         pass_rate = (passed_tests / total_tests) * 100 if total_tests > 0 else 0.0
         print(f"Iteration {iteration}: {passed_tests}/{total_tests} tests passed ({pass_rate:.2f}%)")
-        print(f"  → Cumulative passed tests: {len(all_passed_tests)}/{num_planned_tests} ({(len(all_passed_tests)/num_planned_tests)*100:.2f}%)")
+        cumulative_pct = (len(all_passed_tests) / num_planned_tests) * 100 if num_planned_tests > 0 else 0.0
+        print(f"  → Cumulative passed tests: {len(all_passed_tests)}/{num_planned_tests} ({cumulative_pct:.2f}%)")
+
+        # Collect data for plotting
+        iterations.append(str(iteration))
+        per_iteration_rates.append(pass_rate)
+        cumulative_percentages.append(cumulative_pct)
+
+    # Plot results
+    if len(iterations) == 0:
+        print("No iterations to plot.")
+    else:
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        ax.plot(iterations, per_iteration_rates, marker='o', label='Per-iteration pass rate (%)')
+        ax.plot(iterations, cumulative_percentages, marker='s', label='Cumulative passed planned tests (%)')
+        ax.set_xlabel('Iteration')
+        ax.set_ylabel('Percentage')
+        ax.set_title(args.title)
+        ax.set_ylim(0, 100)
+        ax.grid(True, linestyle='--', alpha=0.4)
+        ax.legend()
+        plt.tight_layout()
+
+        out_path = args.output if args and getattr(args, 'output', None) else 'pass_rates.png'
+        try:
+            plt.savefig(out_path)
+            print(f"Saved plot to {out_path}")
+        except Exception as e:
+            print(f"Failed to save plot: {e}")
 

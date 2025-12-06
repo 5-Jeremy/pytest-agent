@@ -45,6 +45,8 @@ def clean_coder_response(raw_response, test_name, output_dir) -> str:
             cleaned_response = raw_response.split("### Test function\n")[1].replace('```', '').strip()
         else:
             cleaned_response = None
+    # This is needed specifically to resolve issues when running on the srt module
+    cleaned_response = cleaned_response.replace("\"\"\"\\", "")
     return cleaned_response
 
 

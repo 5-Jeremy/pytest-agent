@@ -31,7 +31,8 @@ if __name__ == "__main__":
     test_results, test_feedback = run_tests(
         test_filepath=test_filepath,
         test_dir=config['project'].get('test_dir_in_container', None),
-        image_name=image_name
+        image_name=image_name,
+        verbose=True
     )
 
     print("Number of tests run:", len(test_results))

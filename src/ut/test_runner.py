@@ -389,7 +389,7 @@ class DockerTestRunner:
         except:
             pass
 
-def run_tests(test_filepath: str, test_dir: str, image_name: str) -> dict:
+def run_tests(test_filepath: str, test_dir: str, image_name: str, verbose: bool = False) -> dict:
     # The working directory is where pytest will be run from
     # Be default we assume that the directory for tests is inside the working directory, so if no working dir is specified we derive it from test_dir
     test_runner = DockerTestRunner(image_name=image_name, 
@@ -399,6 +399,8 @@ def run_tests(test_filepath: str, test_dir: str, image_name: str) -> dict:
 )
     test_runner.start_container()
     test_results_string = test_runner.run_pytest(test_filepath)
+    if verbose:
+        console.print(f"\n[bold green]Test output:[/bold green]\n{test_results_string}\n")
     test_results_dict, test_feedback = parse_pytest_output(test_results_string)
     return test_results_dict, test_feedback
 
