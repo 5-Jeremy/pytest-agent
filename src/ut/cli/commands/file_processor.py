@@ -10,7 +10,7 @@ from ut.cli.commands.constants import DEF_TEST_STRING
 from ut.cli.commands.helper import verbose_log, verbose_print
 from ut.workspace import WorkspaceManager
 from ut.llm_client import generate_test_plan, parse_test_case_plan_old, parse_test_case_plan_json, generate_test_cases_batched
-from ut.parser import calculate_import_path_simple, source_code_analysis, extract_code, get_function_imports, get_context_for_test_gen
+from ut.parser import calculate_import_path_simple, source_code_analysis, extract_code, get_function_imports, get_context_for_test_gen, clean_imports_for_file
 from ut.prompts.prompt_builder import (
     generate_class_method_prompt,
     generate_standalone_prompt,
@@ -349,6 +349,7 @@ def process_project(
     
     # Make sure the functions to be tested are imported in the test file
     import_statements.update(function_imports)
+    import_statements = clean_imports_for_file(import_statements, "\n".join(test_cases.values()))
     workspace.save_cur_imports_and_functions(import_statements, test_cases)
     
     # Create a single file with all the test cases

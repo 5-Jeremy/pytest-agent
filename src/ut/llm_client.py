@@ -67,7 +67,7 @@ SERVERS = [
     "http://localhost:8003",
 ]
 MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct"
-MAX_CONCURRENT_PER_SERVER = 8
+MAX_CONCURRENT_PER_SERVER = 4
 TIMEOUT_SECONDS = 60.0
 
 async def send_one(client: httpx.AsyncClient, server_url: str, prompt: str, temperature: float = 0.0) -> str:

@@ -400,7 +400,6 @@ def run_tests(test_filepath: str, test_dir: str, image_name: str) -> dict:
     test_runner.start_container()
     test_results_string = test_runner.run_pytest(test_filepath)
     test_results_dict, test_feedback = parse_pytest_output(test_results_string)
-    print(test_results_string)
     return test_results_dict, test_feedback
 
 def remove_error_source(test_filepath: str, source, type: str):

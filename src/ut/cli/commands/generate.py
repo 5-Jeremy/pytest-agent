@@ -9,7 +9,7 @@ from rich.console import Console
 from ut.cli.commands.file_processor import process_file, process_project, combine_and_write_tests
 from ut.cli.commands.helper import clean_temp_files, verbose_log
 from ut.llm_client import is_vllm_running, parse_test_case_plan_old, parse_test_case_plan_json, generate_test_cases_batched
-from ut.parser import get_context_for_test_gen, calculate_import_path_simple, get_function_imports
+from ut.parser import get_context_for_test_gen, calculate_import_path_simple, get_function_imports, clean_imports_for_file
 from ut.prompts.prompt_builder import generate_coder_prompt, generate_coder_revision_prompt
 from ut.test_writer import extract_imports_and_functions, combine_test_code, clean_coder_response
 from ut.test_checker import lint_test_case
@@ -77,6 +77,14 @@ def generate(
     project's test directory as needed.
     """
 
+    if not no_collab:
+        if not is_vllm_running():
+            console.print(
+                "[bold red]Error: vLLM server is not running on port 8000. \
+                    Please start the server before generating tests.[/bold red]"
+            )
+            raise typer.Exit(code=1)
+
     if ".yaml" not in config_name:
             config_name += ".yaml"
             
@@ -116,13 +124,6 @@ def generate(
     elif workspace.get_status() not in ["START"]:
         conf['predefined_plan_path'] = Path(workspace.get_planner_output_dir()) / f"planner_response_{Path(file_path).stem}.txt"
         assert os.path.exists(conf['predefined_plan_path']), f"Tried to resume but existing plan path {conf['predefined_plan_path']} could not be found."
-    if not no_collab:
-        if not is_vllm_running():
-            console.print(
-                "[bold red]Error: vLLM server is not running on port 8000. \
-                    Please start the server before generating tests.[/bold red]"
-            )
-            raise typer.Exit(code=1)
 
     if not file_path:
         console.print("[bold red]Error: The file path cannot be empty.[/bold red]")
@@ -415,6 +416,7 @@ def generate(
                     console.print(f"[yellow]Warning: No test functions extracted for {test_name}.[/yellow]")
             
             # Create a single file with all the test cases
+            import_statements = clean_imports_for_file(import_statements, "\n".join(test_cases.values()))
             combine_and_write_tests(test_cases, import_statements, Path(file_path), workspace.get_coder_output_dir(), module_import_path)
 
             workspace.save_linter_messages(lint_messages)
@@ -464,8 +466,9 @@ def generate(
     for test_name in all_passed_tests:
         passed_test_cases[test_name] = all_imports_and_functions['functions'][test_name]
     # Write the final file with all passing tests
+    import_statements_final = clean_imports_for_file(all_imports_and_functions['imports'], "\n".join(passed_test_cases.values()))
     combine_and_write_tests(passed_test_cases, 
-                            all_imports_and_functions['imports'], 
+                            import_statements_final, 
                             Path(file_path), 
                             workspace.get_final_output_dir(), 
                             module_import_path, 

@@ -1,3 +1,5 @@
+""" NOTE: This file is not used. Use metrics.calc_coverage_stats instead. """
+
 import json
 from pathlib import Path
 from typing import Dict, List

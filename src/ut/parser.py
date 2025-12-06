@@ -206,6 +206,41 @@ def get_function_imports(file_path, function_locs, class_locs):
         function_imports.append("from " + import_path_converted + f" import {class_name}")
     return function_imports
 
+def clean_imports_for_file(imports: set, test_code: str) -> set:
+    """ Clean the set of import statements by removing any that are not needed by the test code."""
+    cleaned_imports = set()
+    for imp in imports:
+        # Remove comment if any
+        imp = imp.split("#")[0].strip()
+        # Check if the import is actually used in the test code
+        imp_name = ""
+        # The coder often tries includes "import pytest.raises" which is pointless
+        if "pytest.raises" in imp:
+            continue
+        # Remove some other common invalid imports
+        if "datetime.datetime" in imp:
+            continue
+        if imp.startswith("import "):
+            # Importing whole module; we need to check if objects belonging to the module
+            # are used in the test code (i.e. module.something)
+            imp_name = imp.replace("import ", "")
+            if " as " in imp_name:
+                used_name = imp_name.split(" as ")[1].strip()
+            else:
+                used_name = imp_name.strip()
+            if used_name and f"{used_name}." in test_code:
+                cleaned_imports.add(imp)
+        elif imp.startswith("from "):
+            # Importing a specific object from a module; check if the object is used in the test code
+            imp_name = imp.split(" import ")[1]
+            if " as " in imp_name:
+                used_name = imp_name.split(" as ")[1].strip()
+            else:
+                used_name = imp_name.strip()
+            if used_name and (used_name in test_code):
+                cleaned_imports.add(imp)
+    return cleaned_imports
+
 def get_context_for_test_gen(test_plan, function_dict, class_dict) -> str:
     # Get the code for the required functions
     required_function_names = test_plan.get('functions_required', [])
