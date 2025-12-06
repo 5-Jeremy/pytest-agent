@@ -70,14 +70,14 @@ MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct"
 MAX_CONCURRENT_PER_SERVER = 8
 TIMEOUT_SECONDS = 60.0
 
-async def send_one(client: httpx.AsyncClient, server_url: str, prompt: str) -> str:
+async def send_one(client: httpx.AsyncClient, server_url: str, prompt: str, temperature: float = 0.0) -> str:
         url = f"{server_url}/v1/chat/completions"
         payload = {
             "model": MODEL,
             "messages": [
                 {"role": "user", "content": prompt},
             ],
-            "temperature": 0.0,
+            "temperature": temperature,
             "max_tokens": 1024,
         }
         resp = await client.post(url, json=payload, timeout=TIMEOUT_SECONDS)
@@ -85,7 +85,7 @@ async def send_one(client: httpx.AsyncClient, server_url: str, prompt: str) -> s
         data = resp.json()
         return data["choices"][0]["message"]["content"]
 
-async def generate_test_cases_batched(prompts: dict) -> dict:
+async def generate_test_cases_batched(prompts: dict, temperature: float = 0.0) -> dict:
     # TODO: These are hardcoded for now, make them configurable later
     num_servers = 4
     n = len(prompts)
@@ -102,7 +102,7 @@ async def generate_test_cases_batched(prompts: dict) -> dict:
                 async def worker(i=i):
                     async with sem:
                         try:
-                            text = await send_one(client, SERVERS[server_idx], prompts_batch[i])
+                            text = await send_one(client, SERVERS[server_idx], prompts_batch[i], temperature=temperature)
                         except Exception as e:
                             text = f"ERROR: {e!r}"
                         results[i] = text
@@ -179,7 +179,7 @@ def parse_test_case_plan_old(raw_plan: str):
         if desc_match:
             description = desc_match.group(1).strip()
             test_case_plans[test_name] = description
-            verbose_log(f"  → Extracted test plan: {test_name}")
+            # verbose_log(f"  → Extracted test plan: {test_name}")
 
     return test_case_plans
 
@@ -225,6 +225,6 @@ def parse_test_case_plan_json(raw_plan: str):
     for obj, (start, end) in json_objects:
         for test_case_name in obj:
             test_case_plans[test_case_name] = obj[test_case_name]
-            verbose_log(f"  → Extracted test plan: {test_case_name}")
+            # verbose_log(f"  → Extracted test plan: {test_case_name}")
 
     return test_case_plans

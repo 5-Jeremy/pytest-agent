@@ -427,7 +427,7 @@ def generate(
             
             # Batched generation
             verbose_log(f"\n  → Generating test codes for {len(prompts)} test(s)...")
-            responses = asyncio.run(generate_test_cases_batched(prompts))
+            responses = asyncio.run(generate_test_cases_batched(prompts, temperature=0.2))
 
             lint_messages = {}
             for test_name, response in responses.items():
