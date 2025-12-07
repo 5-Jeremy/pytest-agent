@@ -1,75 +1,73 @@
-# Automated Unit Test Generation CLI with AI
+# Pytest Agent
 
-Unittest AI Agent is a Python tool that automatically generates comprehensive unit tests for your Python functions and classes using OpenAI's GPT models. It analyzes your source code, prepares context-rich prompts, and writes robust pytest-based test suites.
+Pytest Agent is a fork of [unittest-ai-agent](https://github.com/herchila/unittest-ai-agent) which aims to automatically generate a suite of test cases for the purposes of regression testing through collaboration between a highly capable LLM which is expensive to query and a smaller LLM which is cheap to query. Since the target application is regression testing, the focus is on generating tests which confirm to the behavior of the existing code (which is assumed to be correct) while maximizing the code coverage. The collaboration consists of the large LLM (called the planner) creating a list of concise plans for test cases in a single query and the small LLM (called the coder) generating a complete test case to fulfill each plan, using guidance from the large LLM as context. Since the small LLM is cheap to query, it is given multiple attempts to generate a correct test (i.e. one which the given code passes) and takes in feedback to refine its code each time it fails. This project focuses on python code and uses the [pytest](https://github.com/pytest-dev/pytest) framework.
 
-## Features
+## Additional Info
 
-- **Automatic Source Analysis:** Extracts imports, functions, and class context from your Python files.
-- **Prompt Engineering:** Uses customizable prompt templates for both standalone functions and class methods.
-- **LLM Integration:** Sends code context to OpenAI GPT-4o to generate high-quality unit tests.
-- **Test Postprocessing:** Cleans and adapts generated code for your project structure.
-- **Test Writing:** Saves generated tests to the appropriate directory.
+A detailed report of the project can be found in this repo under "Project Report.pdf". There is also a demonstration video of how to run Pytest Agent which you can find [here](https://www.youtube.com/watch?v=urBM6bGjup0).
 
 ## Setup
 
-0. **Requirements:**
-   - Python 3.9 or higher
-   - OpenAI API key
-   - Poetry `curl -sSL https://install.python-poetry.org | python3`
+This repository is set up to use TAMUS AI Chat rather than a standard OpenAI API key. To use a different provider (or just change the planner model), you should only need to change the model name on line 26 of llm_client.py (and make sure your API key is registered with llm)
 
-1. **Install dependencies:**
+1. **Environment Setup:**
    ```sh
-   poetry install
+   conda env create -f environment.yaml
    ```
 
 2. **Setup llm to use TAMUS AI Chat:**
-   - Save your API key
      ```sh
      llm keys set chat.tamu.ai <key>
+     source llm_setup_model.sh
      ```
-   - ```source llm_setup_model.sh```
 
 3. **Build the Docker image for the code under evaluation**
-   - If copying the code to test directly into the container image: ```docker build -t unittest:example -f eval_dockerfiles/Dockerfile .```
-   - If using a volume mount:
+   
+   For example, to run Pytest Agent on the parse project:
+   ```sh
+     docker build -t unittest:parse -f eval_dockerfiles/parse/Dockerfile .
+     ```
 
 4.  **Start the VLLM server**
-
-Simple sequential version:
+<!-- Simple sequential version:
 ```sh
 vllm serve Qwen/Qwen2.5-Coder-32B-Instruct
-```
-Fully parallel version utilizing multiple GPUs (hardcoded to use Qwen/Qwen2.5-Coder-32B-Instruct):
-```sh
-bash start_vllm_servers.sh <num_GPUS>
-```
+``` -->
+   Note that it is hardcoded to use Qwen/Qwen2.5-Coder-32B-Instruct; this can be changed on line 69 of llm_client.py.
+   ```sh
+   bash start_vllm_servers.sh <num_GPUS>
+   ```
+
 ## Generating tests
 
 **Run the test generator:**
-Inside the unittest-ai-agent directory:
 ```sh
-poetry run ut generate example/converter.py
+poetry run ut generate <path_to_repo> -c <config_name>
 ```
 
-This will analyze `ut/example/converter.py` and generate tests in `ut/example/tests/`.
+The code will search for config files in the configs/ directory. All outputs will be placed in a subdirectory of Workspaces/. Each run creates its own subdirectory (referred to as its workspace).
 
-## Executing tests
+If you wish to reuse test case plans from a previous run on the same project, simply include the `--plan_path` argument with the path to the planner_response_xxx.txt file which is located in the planner subdirectory of the workspace for the previous run.
+
+## Executing the Final Set of Tests
+This will verify that all tests pass, and also write a coverage report file to the final_output directory. 
 ```sh
-python src/ut/test_runner.py
+python -m metrics.run_final_tests <path_to_workspace>
 ```
 
-### Customization
-
-- **Prompt Templates:** Edit files in `ut/prompts/` to change how prompts are constructed for the LLM.
-
-### Example
-
-Given a function like:
-
-```python
-def convert_date_to_iso(date_str: str, format: str = "%d/%m/%Y") -> str:
-    ...
+## Viewing Test Case Pass Rates
+This will print a summary of the test case pass rates across iterations to the console, and also produce a PNG image of the plot (unless you include the --no-save flag).
+```sh
+python -m metrics.calc_pass_rates <path_to_workspace>
 ```
 
-The agent will generate a suite of pytest tests covering various edge cases and save them to `ut_output/test_convert.py`.
+## Viewing Coverage Statistics
+This will parse the coverage report generated by pytest-cov and print statistics to the console.
+```sh
+python -m metrics.calc_coverage_stats <path_to_cov.json>
+```
+
+### Prompt Customization
+
+All prompts are located in src/ut/prompts/ (only the .py files are used; the .txt files are obsolete).
 

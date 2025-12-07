@@ -16,6 +16,7 @@ def parse_args():
                         help="Output image file to save the plot (default: pass_rates.png)")
     parser.add_argument("-T", "--title", type=str, default="Test Pass Rates by Iteration",
                         help="Title of the plot (default: 'Test Pass Rates by Iteration')")
+    parser.add_argument("--no-save", action="store_true", help="Do not save the plot to a file, just display it.")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -70,21 +71,25 @@ if __name__ == "__main__":
     if len(iterations) == 0:
         print("No iterations to plot.")
     else:
-        fig, ax = plt.subplots(figsize=(8, 4.5))
+        fig, ax = plt.subplots(figsize=(7, 5))
+        font_size = 18  # Increased font size
         ax.plot(iterations, per_iteration_rates, marker='o', label='Per-iteration pass rate (%)')
         ax.plot(iterations, cumulative_percentages, marker='s', label='Cumulative passed planned tests (%)')
-        ax.set_xlabel('Iteration')
-        ax.set_ylabel('Percentage')
-        ax.set_title(args.title)
+        ax.set_xlabel('Iteration', fontsize=font_size)
+        ax.set_ylabel('Percentage', fontsize=font_size)
+        ax.set_title(args.title, fontsize=font_size+2)
         ax.set_ylim(0, 100)
         ax.grid(True, linestyle='--', alpha=0.4)
-        ax.legend()
+        ax.legend(loc='upper left', fontsize=font_size-4)
+        ax.tick_params(axis='both', which='major', labelsize=font_size)
         plt.tight_layout()
 
         out_path = args.output if args and getattr(args, 'output', None) else 'pass_rates.png'
-        try:
-            plt.savefig(out_path)
-            print(f"Saved plot to {out_path}")
-        except Exception as e:
-            print(f"Failed to save plot: {e}")
+        
+        if not getattr(args, 'no_save', False):
+            try:
+                plt.savefig(out_path)
+                print(f"Saved plot to {out_path}")
+            except Exception as e:
+                print(f"Failed to save plot: {e}")
 
