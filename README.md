@@ -4,7 +4,7 @@ Pytest Agent is a fork of [unittest-ai-agent](https://github.com/herchila/unitte
 
 ## Additional Info
 
-A detailed report of the project can be found in this repo under "Project Report.pdf". There is also a demonstration video of how to run Pytest Agent which you can find [here](https://www.youtube.com/watch?v=urBM6bGjup0).
+A detailed report of the project can be found in this repo under "Project Report.pdf". Note that you may need to download the file in order to use the hyperlinks. There is also a demonstration video of how to run Pytest Agent which you can find [here](https://www.youtube.com/watch?v=urBM6bGjup0).
 
 ## Setup
 
