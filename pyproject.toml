@@ -12,7 +12,10 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "openai>=1.100.2",
     "typer[all]>=0.16.1",
-    "rich>=14.1.0"
+    "rich>=14.1.0",
+    "vllm",
+    "llm",
+    "pytest-cov",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

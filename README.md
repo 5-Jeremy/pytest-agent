@@ -12,7 +12,10 @@ This repository is set up to use TAMUS AI Chat rather than a standard OpenAI API
 
 1. **Environment Setup:**
    ```sh
-   conda env create -f environment.yaml
+   conda create -n test_gen python=3.12
+   conda activate test_gen
+   pip install poetry==2.1.3 evaluate
+   poetry install
    ```
 
 2. **Setup llm to use TAMUS AI Chat:**
