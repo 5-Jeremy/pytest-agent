@@ -1,3 +1,5 @@
+# WARNING: This file is just for reference; to create a conda environment appropriate for pytest-agent,
+# follow the directions in the README
 name: test_gen
 channels:
   - defaults
