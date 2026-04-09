@@ -14,7 +14,7 @@ This repository is set up to use TAMUS AI Chat rather than a standard OpenAI API
    ```sh
    conda create -n test_gen python=3.12
    conda activate test_gen
-   pip install poetry==2.1.3 evaluate
+   pip install poetry==2.3.2 evaluate
    poetry install
    ```
 
