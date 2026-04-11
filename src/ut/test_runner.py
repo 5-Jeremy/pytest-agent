@@ -396,7 +396,7 @@ def run_tests(test_filepath: str, test_dir: str, image_name: str, verbose: bool 
                                     container_name="ut_generate", 
                                     test_dir_in_container=test_dir, 
                                     working_dir=Path(test_dir).parent.as_posix()
-)
+    )
     test_runner.start_container()
     test_results_string = test_runner.run_pytest(test_filepath)
     if verbose:

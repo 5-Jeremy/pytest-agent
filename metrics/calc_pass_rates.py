@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Calculate pass rates from test results.")
-    parser.add_argument("dir", type=str, help="Path to a workspace.")
+    parser.add_argument("workspace_dir", type=str, help="Path to a workspace.")
     parser.add_argument("-o", "--output", type=str, default="pass_rates.png",
                         help="Output image file to save the plot (default: pass_rates.png)")
     parser.add_argument("-T", "--title", type=str, default="Test Pass Rates by Iteration",
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     os.environ["UT_VERBOSE"] = "0"
     os.environ["UT_LOG_FILE"] = "None"
     args = parse_args()
-    directory_path = args.dir
+    directory_path = args.workspace_dir
     try:
         workspace = WorkspaceManager(base_dir=directory_path, fresh_start=False)
         # Get the number of planned tests

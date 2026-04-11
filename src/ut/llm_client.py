@@ -9,7 +9,7 @@ from ut.cli.commands.helper import verbose_log
 import json
 from typing import Iterator, Tuple, Any
 
-import math, asyncio, httpx
+import os, math, asyncio, httpx
 
 load_dotenv()
 
@@ -23,7 +23,7 @@ def generate_test_plan(prompt: str) -> str:
     Returns:
         str: The generated test code.
     """
-    model = llm.get_model("TAMUS AI Chat (chat.tamu.ai): protected.gpt-4.1") # TODO: This assumes that TAMU AI is used
+    model = llm.get_model(os.getenv("LLM_MODEL_NAME"))
     try:
         response = model.prompt(prompt).text()
     except Exception as e:
@@ -215,6 +215,13 @@ def extract_json_objects(text: str, *, only_objects: bool = True
 def parse_test_case_plan_json(raw_plan: str):
     # Parse the response to get test plans for each function
     # The raw plan should contain at least one JSON object
+
+    # If the plan is surrounded with ```json ... ```, extract the content inside the code block first
+    start_tag_loc = raw_plan.find("```json")
+    if start_tag_loc != -1:
+        end_tag_loc = raw_plan.find("```", start_tag_loc + len("```json"))
+        if end_tag_loc != -1:
+            raw_plan = raw_plan[start_tag_loc + len("```json"):end_tag_loc]
 
     json_objects = list(extract_json_objects(raw_plan))
 
